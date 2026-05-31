@@ -1,0 +1,340 @@
+<ui:FluentWindow x:Class="Prosmotr.Views.SettingsWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:vm="clr-namespace:Prosmotr.ViewModels"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 mc:Ignorable="d"
+                 d:DataContext="{d:DesignInstance vm:SettingsViewModel}"
+                 Title="Настройки" Width="580" Height="680"
+                 Icon="pack://application:,,,/Resources/Icons/app.ico"
+                 WindowStartupLocation="CenterOwner"
+                 ExtendsContentIntoTitleBar="True"
+                 WindowBackdropType="Mica">
+
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style x:Key="Section" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="2,14,0,8" />
+        </Style>
+        <Style x:Key="RowLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="Настройки" />
+
+        <ScrollViewer Grid.Row="1" Padding="20,0,20,20" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+
+                <!-- ВИДЕО -->
+                <TextBlock Text="Видео" Style="{StaticResource Section}" />
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Глобальная скорость по умолчанию" />
+                            <TextBlock Text="Применяется ко всем новым видео" Opacity="0.6" FontSize="12" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" Width="100" VerticalAlignment="Center"
+                                  ItemsSource="{Binding PlaybackRates}"
+                                  SelectedItem="{Binding DefaultPlaybackRate, Mode=TwoWay}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource RateToString}}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Запоминать скорость для каждого файла" Style="{StaticResource RowLabel}" />
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding RememberRatePerFile, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Продолжать видео с сохранённой позиции" Style="{StaticResource RowLabel}" />
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding ResumeVideoPosition, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Шаг перемотки видео (←/→ в полноэкране)" />
+                            <TextBlock Text="{Binding SeekStepSeconds, StringFormat={}{0} сек.}"
+                                       Opacity="0.6" FontSize="12" />
+                        </StackPanel>
+                        <Slider Grid.Column="1" Width="160" VerticalAlignment="Center"
+                                Minimum="1" Maximum="30" TickFrequency="1" IsSnapToTickEnabled="True"
+                                Value="{Binding SeekStepSeconds, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Покадровая перемотка" />
+                            <TextBlock Text="←/→ в полноэкранном режиме шагают по одному кадру (на паузе) вместо секунд"
+                                       Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding FrameByFrameSeek, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <!-- УДАЛЕНИЕ -->
+                <TextBlock Text="Удаление" Style="{StaticResource Section}" />
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Запрашивать подтверждение удаления" Style="{StaticResource RowLabel}" />
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding ConfirmDelete, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Удалять навсегда" />
+                            <TextBlock Text="Минуя Корзину (необратимо)" Opacity="0.6" FontSize="12" />
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding PermanentDelete, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Показывать плашку после удаления" />
+                            <TextBlock Text="Уведомление «перемещён в корзину» с кнопкой «Отменить»" Opacity="0.6" FontSize="12" />
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowDeleteNotification, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <!-- ОФОРМЛЕНИЕ -->
+                <TextBlock Text="Оформление" Style="{StaticResource Section}" />
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Тема" Style="{StaticResource RowLabel}" />
+                        <ComboBox Grid.Column="1" Width="150" ItemsSource="{Binding Themes}"
+                                  SelectedItem="{Binding Theme_, Mode=TwoWay}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource ThemeToString}}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
+                </Border>
+
+                <!-- ИНТЕРФЕЙС -->
+                <TextBlock Text="Интерфейс" Style="{StaticResource Section}" />
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Показывать превью файлов (лента миниатюр снизу)" Style="{StaticResource RowLabel}" />
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowThumbnails, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Положение ленты миниатюр" Style="{StaticResource RowLabel}" />
+                        <ComboBox Grid.Column="1" Width="150" ItemsSource="{Binding StripPositions}"
+                                  SelectedItem="{Binding ThumbnailStripPosition, Mode=TwoWay}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource StripPositionToString}}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Автоскрытие панели в полноэкранном режиме" Style="{StaticResource RowLabel}" />
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding AutoHideControls, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Клавиша закрытия программы" Style="{StaticResource RowLabel}" />
+                        <ComboBox Grid.Column="1" Width="120" ItemsSource="{Binding ExitKeys}"
+                                  SelectedItem="{Binding ExitKey, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Открывать последний файл при запуске" Style="{StaticResource RowLabel}" />
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding OpenLastOnStartup, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Очищать недавние при запуске" Style="{StaticResource RowLabel}" />
+                            <TextBlock Text="Список недавних файлов и папок сбрасывается при каждом старте"
+                                       Opacity="0.6" FontSize="12" />
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding ClearRecentOnStartup, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Порядок как в открытом окне Проводника" />
+                            <TextBlock Text="Если папка открыта в Проводнике — повторять её сортировку" Opacity="0.6" FontSize="12" />
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding MatchExplorerSort, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Интервал слайд-шоу" />
+                            <TextBlock Text="{Binding SlideshowIntervalSeconds, StringFormat={}{0} сек.}"
+                                       Opacity="0.6" FontSize="12" />
+                        </StackPanel>
+                        <Slider Grid.Column="1" Width="160" VerticalAlignment="Center"
+                                Minimum="1" Maximum="30" TickFrequency="1" IsSnapToTickEnabled="True"
+                                Value="{Binding SlideshowIntervalSeconds, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <!-- ИНТЕГРАЦИЯ -->
+                <TextBlock Text="Интеграция с Windows" Style="{StaticResource Section}" />
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Интеграция с Проводником" />
+                            <TextBlock Text="Контекстное меню «Открыть в Просмотр» и пункт «Открыть с помощью»"
+                                       Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding IntegrateShell, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock TextWrapping="Wrap" Opacity="0.75" FontSize="12" Margin="0,0,0,10"
+                                   Text="Сделать «Просмотр» приложением по умолчанию можно только вручную в параметрах Windows." />
+                        <ui:Button Content="Приложения по умолчанию" Command="{Binding OpenDefaultAppsCommand}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Очистить список недавних" Style="{StaticResource RowLabel}" />
+                        <ui:Button Grid.Column="1" Content="Очистить" Command="{Binding ClearRecentCommand}" />
+                    </Grid>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</ui:FluentWindow>

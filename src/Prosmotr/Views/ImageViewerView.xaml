@@ -1,0 +1,103 @@
+<UserControl x:Class="Prosmotr.Views.ImageViewerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:ctl="clr-namespace:Prosmotr.Views.Controls"
+             xmlns:gif="clr-namespace:XamlAnimatedGif;assembly=XamlAnimatedGif"
+             xmlns:vm="clr-namespace:Prosmotr.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance vm:ImageViewerViewModel}">
+
+    <Grid Background="{DynamicResource AppCanvasBrush}">
+
+        <!-- Область изображения с зумом и панорамированием.
+             Canvas (а не Grid) даёт картинке неограниченный layout-слот: при Stretch="None"
+             Image отдаёт натуральный размер, и если он больше окна, Grid обрезал бы его
+             layout-клипом до своего слота. Canvas меряет детей бесконечностью и не клипует —
+             изображение рисуется целиком, а вписывание делает трансформ ZoomBorder. -->
+        <ctl:ZoomBorder x:Name="Zoom">
+            <Canvas>
+                <Image x:Name="StaticImage" Source="{Binding Image}" Stretch="None"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       Visibility="{Binding IsAnimated, Converter={StaticResource InverseBoolToVis}}">
+                    <Image.LayoutTransform>
+                        <RotateTransform Angle="{Binding Rotation}" />
+                    </Image.LayoutTransform>
+                </Image>
+
+                <Image x:Name="AnimatedImage" Stretch="None"
+                       gif:AnimationBehavior.SourceUri="{Binding AnimatedSource}"
+                       gif:AnimationBehavior.RepeatBehavior="Forever"
+                       Visibility="{Binding IsAnimated, Converter={StaticResource BoolToVis}}" />
+            </Canvas>
+        </ctl:ZoomBorder>
+
+        <!-- Индикатор загрузки -->
+        <ui:ProgressRing IsIndeterminate="True" Width="48" Height="48"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+
+        <!-- Ошибка чтения -->
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}">
+            <ui:SymbolIcon Symbol="ImageOff24" FontSize="48" Opacity="0.6" HorizontalAlignment="Center" />
+            <TextBlock Text="Не удалось открыть изображение" Margin="0,8,0,0" Opacity="0.8" />
+        </StackPanel>
+
+        <!-- Нижняя панель инструментов фото: скрывается по таймеру бездействия (см. MainWindow),
+             видимостью управляет MainViewModel.ChromeVisible. -->
+        <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,18"
+                Background="#CC1F1F1F" CornerRadius="10" Padding="6,4"
+                Visibility="{Binding DataContext.ChromeVisible,
+                             RelativeSource={RelativeSource AncestorType=Window},
+                             Converter={StaticResource BoolToVis}}">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="0.5" />
+            </Border.Effect>
+            <StackPanel Orientation="Horizontal">
+                <ui:Button Appearance="Transparent" ToolTip="Уменьшить (−)" Command="{Binding ZoomOutCommand}">
+                    <ui:Button.Icon><ui:SymbolIcon Symbol="ZoomOut24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
+                </ui:Button>
+                <TextBlock VerticalAlignment="Center" MinWidth="48" TextAlignment="Center"
+                           Foreground="White"
+                           Text="{Binding ZoomPercent, StringFormat={}{0:0}%}" />
+                <ui:Button Appearance="Transparent" ToolTip="Увеличить (+)" Command="{Binding ZoomInCommand}">
+                    <ui:Button.Icon><ui:SymbolIcon Symbol="ZoomIn24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
+                </ui:Button>
+
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="6,2" />
+
+                <ui:Button Appearance="Transparent" ToolTip="По размеру окна" Command="{Binding FitToWindowCommand}">
+                    <ui:Button.Icon><ui:SymbolIcon Symbol="FullScreenMaximize24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
+                </ui:Button>
+                <ui:Button Appearance="Transparent" ToolTip="100%" Command="{Binding ActualSizeCommand}" Content="1:1" />
+                <ui:Button Appearance="Transparent" ToolTip="Заполнить" Command="{Binding FillWindowCommand}">
+                    <ui:Button.Icon><ui:SymbolIcon Symbol="ArrowMaximize24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
+                </ui:Button>
+
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="6,2" />
+
+                <ui:Button Appearance="Transparent" ToolTip="Повернуть влево" Command="{Binding RotateLeftCommand}">
+                    <ui:Button.Icon><ui:SymbolIcon Symbol="ArrowRotateCounterclockwise24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
+                </ui:Button>
+                <ui:Button Appearance="Transparent" ToolTip="Повернуть вправо" Command="{Binding RotateRightCommand}">
+                    <ui:Button.Icon><ui:SymbolIcon Symbol="ArrowRotateClockwise24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
+                </ui:Button>
+                <ui:Button Appearance="Transparent" ToolTip="Сохранить поворот в файл"
+                           Command="{Binding SaveRotationCommand}"
+                           Visibility="{Binding CanSaveRotation, Converter={StaticResource BoolToVis}}">
+                    <ui:Button.Icon><ui:SymbolIcon Symbol="Save24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
+                </ui:Button>
+
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="6,2" />
+
+                <ui:Button Appearance="Transparent" ToolTip="Копировать изображение в буфер обмена"
+                           Command="{Binding CopyImageCommand}">
+                    <ui:Button.Icon><ui:SymbolIcon Symbol="ImageCopy24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
+                </ui:Button>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

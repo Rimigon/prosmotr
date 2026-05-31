@@ -1,0 +1,68 @@
+<UserControl x:Class="Prosmotr.Views.EmptyStateView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:vm="clr-namespace:Prosmotr.ViewModels"
+             d:DataContext="{d:DesignInstance vm:EmptyStateViewModel}"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <!-- MinHeight = высота вьюпорта: контент остаётся отцентрированным, пока влезает,
+             и прокручивается, когда недавних много (иначе нижняя кнопка ушла бы за край окна). -->
+        <Grid MinHeight="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="560" Margin="24"
+                    TextElement.Foreground="{DynamicResource AppCanvasForeground}">
+
+            <ui:SymbolIcon Symbol="ImageMultiple24" FontSize="72" Opacity="0.55" HorizontalAlignment="Center" />
+
+            <TextBlock Text="Перетащите фото или видео сюда"
+                       FontSize="22" FontWeight="SemiBold" TextAlignment="Center"
+                       Margin="0,18,0,4" />
+            <TextBlock Text="или откройте файл либо папку"
+                       Opacity="0.7" TextAlignment="Center" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">
+                <ui:Button Content="Открыть файл" Appearance="Primary"
+                           Command="{Binding OpenFileCommand}" Margin="0,0,10,0" MinWidth="150">
+                    <ui:Button.Icon><ui:SymbolIcon Symbol="Document24" /></ui:Button.Icon>
+                </ui:Button>
+                <ui:Button Content="Открыть папку"
+                           Command="{Binding OpenFolderCommand}" MinWidth="150">
+                    <ui:Button.Icon><ui:SymbolIcon Symbol="FolderOpen24" /></ui:Button.Icon>
+                </ui:Button>
+            </StackPanel>
+
+            <StackPanel Margin="0,32,0,0"
+                        Visibility="{Binding HasRecent, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Недавние" FontWeight="SemiBold" Opacity="0.8"
+                           Margin="4,0,0,6" />
+                <ItemsControl ItemsSource="{Binding RecentItems}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <ui:Button Appearance="Transparent" Foreground="{DynamicResource AppCanvasForeground}"
+                                       HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                       Margin="0,1"
+                                       Command="{Binding DataContext.OpenRecentCommand,
+                                                 RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                       CommandParameter="{Binding}">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon Symbol="History24" Margin="0,0,10,0" Opacity="0.7" />
+                                    <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" MaxWidth="460" />
+                                </StackPanel>
+                            </ui:Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Заметная кнопка очистки всей истории открытия -->
+                <ui:Button Content="Очистить историю" Command="{Binding ClearRecentCommand}"
+                           HorizontalAlignment="Center" Margin="0,14,0,0" MinWidth="180">
+                    <ui:Button.Icon><ui:SymbolIcon Symbol="Delete24" /></ui:Button.Icon>
+                </ui:Button>
+            </StackPanel>
+        </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

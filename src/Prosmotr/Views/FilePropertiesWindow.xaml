@@ -1,0 +1,76 @@
+<ui:FluentWindow x:Class="Prosmotr.Views.FilePropertiesWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:vm="clr-namespace:Prosmotr.ViewModels"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 mc:Ignorable="d"
+                 d:DataContext="{d:DesignInstance vm:FilePropertiesViewModel}"
+                 Title="Свойства" Width="460" Height="560"
+                 Icon="pack://application:,,,/Resources/Icons/app.ico"
+                 WindowStartupLocation="CenterOwner"
+                 ResizeMode="CanResizeWithGrip"
+                 ExtendsContentIntoTitleBar="True"
+                 WindowBackdropType="Mica">
+
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16,12" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="Свойства" />
+
+        <ScrollViewer Grid.Row="1" Padding="20,4,20,8" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <!-- Шапка: иконка вида файла + имя -->
+                <StackPanel Orientation="Horizontal" Margin="2,4,0,14">
+                    <ui:SymbolIcon Symbol="{Binding KindSymbol}" FontSize="30"
+                                   VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold"
+                               TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="350" />
+                </StackPanel>
+
+                <!-- Список свойств -->
+                <Border Style="{StaticResource Card}">
+                    <ItemsControl ItemsSource="{Binding Rows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="128" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Label}" Opacity="0.6"
+                                               VerticalAlignment="Top" Margin="0,0,10,0" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"
+                                               VerticalAlignment="Top" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Нижняя панель: индикатор загрузки деталей + закрыть -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="20,4,20,18">
+            <ui:ProgressRing IsIndeterminate="True" Width="20" Height="20" Margin="0,0,12,0"
+                             VerticalAlignment="Center"
+                             Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+            <ui:Button Content="Закрыть" MinWidth="92" Appearance="Primary" Click="OnCloseClick" />
+        </StackPanel>
+    </Grid>
+</ui:FluentWindow>

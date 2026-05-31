@@ -1,0 +1,30 @@
+## .NET / Visual Studio
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userprefs
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+artifacts/
+
+## Опубликованное приложение (ярлык на рабочем столе ведёт сюда)
+app/
+
+## Rider
+.idea/
+
+## NuGet
+*.nupkg
+packages/
+
+## OS
+Thumbs.db
+desktop.ini
+.DS_Store
