@@ -125,6 +125,7 @@ public partial class MainWindow : FluentWindow
 
     // Автоскрытие «плавающих» элементов фото (нижняя панель + боковые стрелки) по бездействию.
     private readonly DispatcherTimer _chromeHideTimer;
+    private Point _lastMousePos = new Point(-1, -1);
 
     public MainWindow(MainViewModel viewModel, IServiceProvider services)
     {
@@ -189,6 +190,10 @@ public partial class MainWindow : FluentWindow
     {
         // Видео управляет своими элементами и курсором само (VideoViewerView) — не мешаем.
         if (_vm.CurrentContent is not ImageViewerViewModel) return;
+
+        var pos = e.GetPosition(this);
+        if (pos == _lastMousePos) return; // игнорируем «ложные» MouseMove от перестроения визуального дерева
+        _lastMousePos = pos;
 
         if (!_vm.ChromeVisible) _vm.ChromeVisible = true;
         Cursor = Cursors.Arrow;
