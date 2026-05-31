@@ -314,6 +314,13 @@ Magick.NET (конвертация в PNG в памяти), остальное �
   `VideoViewerView` больше НЕ привязаны к `ShowFileNavigation` в XAML — их видимостью управляет
   code-behind (`UpdateSideNav`): показываются только когда панель видна (`_controlsShown`) И файлов >1.
   Прячутся по тому же `_hideTimer`, что и `ControlBar`.
+- **Видео: курсор скрывается через `Overlay.Cursor` + `Window.Cursor`, а не `UserControl.Cursor`.**
+  Из-за airspace-окна LibVLCSharp.WPF (отдельное нативное HWND за WPF-оверлеем) установка
+  `Cursor = Cursors.None` на уровне `VideoViewerView` не гарантирует скрытие курсора над видео:
+  `MainWindow` может держать `Cursor = Cursors.Arrow`, который «пробивается» сквозь airspace.
+  Поэтому `ShowControls`/`HideControlsIfPlaying` выставляют курсор явно на `Overlay`
+  (Grid с фоном `#01000000`, который перехватывает hit-test поверх видео) и синхронно
+  на `Window.GetWindow(this).Cursor`, чтобы весь HWND был согласован.
 
 ---
 

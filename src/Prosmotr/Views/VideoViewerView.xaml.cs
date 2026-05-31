@@ -373,7 +373,11 @@ public partial class VideoViewerView : UserControl
     private void ShowControls()
     {
         ControlBar.Visibility = Visibility.Visible;
-        Cursor = Cursors.Arrow;
+        // Устанавливаем курсор на Overlay (а не на UserControl), чтобы он точно применялся
+        // над областью видео внутри airspace LibVLCSharp.WPF.
+        Overlay.Cursor = Cursors.Arrow;
+        // Также возвращаем курсор окна, если видео его скрыло — чтобы панели/стрелки снаружи тоже были с курсором.
+        if (Window.GetWindow(this) is { } w) w.Cursor = Cursors.Arrow;
         _controlsShown = true;
         UpdateSideNav();
         _hideTimer.Stop();
@@ -386,7 +390,10 @@ public partial class VideoViewerView : UserControl
         if (_vm is { IsPlaying: true, IsEnded: false })
         {
             ControlBar.Visibility = Visibility.Collapsed;
-            Cursor = Cursors.None;
+            // Скрываем курсор над видео: явно на Overlay (чтобы airspace не мешал)
+            // и на окно (чтобы не оставался Arrow от MainWindow/иных элементов).
+            Overlay.Cursor = Cursors.None;
+            if (Window.GetWindow(this) is { } w) w.Cursor = Cursors.None;
             _controlsShown = false;
             UpdateSideNav();
         }
