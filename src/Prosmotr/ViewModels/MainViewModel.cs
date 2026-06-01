@@ -74,6 +74,10 @@ public sealed partial class MainViewModel : ViewModelBase
     public bool ShowWindowNavArrows =>
         _nav.Items.Count > 1 && CurrentContent is not VideoViewerViewModel && ChromeVisible;
 
+    /// <summary>Инфо-плашка в полноэкранном режиме (имя, размер, порядок файла).
+    /// Показывается только когда есть что показывать и видны элементы управления (chrome).</summary>
+    public bool ShowFullscreenInfo => IsFullScreen && ChromeVisible && !string.IsNullOrEmpty(StatusText);
+
     public ThumbnailStripPosition ThumbnailStripPosition => _settings.Settings.ThumbnailStripPosition;
 
     public MainViewModel(
@@ -581,8 +585,17 @@ public sealed partial class MainViewModel : ViewModelBase
         ToggleSlideshowCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnIsFullScreenChanged(bool value) => OnPropertyChanged(nameof(ShowThumbnailStrip));
+    partial void OnIsFullScreenChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowThumbnailStrip));
+        OnPropertyChanged(nameof(ShowFullscreenInfo));
+    }
+    partial void OnStatusTextChanged(string value) => OnPropertyChanged(nameof(ShowFullscreenInfo));
     partial void OnHasItemsChanged(bool value) => OnPropertyChanged(nameof(ShowThumbnailStrip));
     partial void OnCurrentContentChanged(object? value) => OnPropertyChanged(nameof(ShowWindowNavArrows));
-    partial void OnChromeVisibleChanged(bool value) => OnPropertyChanged(nameof(ShowWindowNavArrows));
+    partial void OnChromeVisibleChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowWindowNavArrows));
+        OnPropertyChanged(nameof(ShowFullscreenInfo));
+    }
 }

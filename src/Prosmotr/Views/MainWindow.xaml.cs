@@ -335,6 +335,10 @@ public partial class MainWindow : FluentWindow
             Height = _prevHeight;
             Background = _prevWindowBackground;
         }
+
+        // Форсируем WPF layout pass, чтобы ForegroundWindow LibVLCSharp.WPF
+        // синхронизировал позицию overlay-окна после Win32-изменений окна.
+        Dispatcher.BeginInvoke(new Action(UpdateLayout), DispatcherPriority.Render);
     }
 
     // --- Размещение ленты миниатюр (снизу / слева) ---

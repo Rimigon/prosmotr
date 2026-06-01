@@ -141,13 +141,8 @@
             <!-- Инфо-плашка в полноэкранном режиме (замена верхней панели Toolbar) -->
             <Border Grid.Row="0" Grid.Column="1" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,14,0,0"
                     Background="#D91A1A1A" CornerRadius="6" Padding="14,6"
-                    IsHitTestVisible="False">
-                <Border.Visibility>
-                    <MultiBinding Converter="{StaticResource BoolAndToVis}">
-                        <Binding Path="IsFullScreen" />
-                        <Binding Path="ChromeVisible" />
-                    </MultiBinding>
-                </Border.Visibility>
+                    IsHitTestVisible="False"
+                    Visibility="{Binding ShowFullscreenInfo, Converter={StaticResource BoolToVis}}">
                 <TextBlock Text="{Binding StatusText}" Foreground="White" FontSize="13" Opacity="0.9" />
             </Border>
 

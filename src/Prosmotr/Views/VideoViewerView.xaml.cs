@@ -71,7 +71,6 @@ public partial class VideoViewerView : UserControl
     // привязываем новый плеер и запускаем здесь, иначе остаётся старый (пустой кадр).
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        DetachMainVm();
         Detach();
         if (DataContext is VideoViewerViewModel vm)
         {
@@ -97,6 +96,7 @@ public partial class VideoViewerView : UserControl
         Dispatcher.BeginInvoke(new Action(FocusHostWindow), DispatcherPriority.Loaded);
         _mainVm = Window.GetWindow(this)?.DataContext as MainViewModel;
         if (_mainVm != null) _mainVm.PropertyChanged += OnMainVmPropertyChanged;
+        UpdateInfo();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -388,7 +388,7 @@ public partial class VideoViewerView : UserControl
         if (Window.GetWindow(this) is { } w) w.Cursor = Cursors.Arrow;
         _controlsShown = true;
         UpdateSideNav();
-        UpdateInfoVisibility();
+        UpdateInfo();
         _hideTimer.Stop();
         _hideTimer.Start();
     }
@@ -405,7 +405,7 @@ public partial class VideoViewerView : UserControl
             if (Window.GetWindow(this) is { } w) w.Cursor = Cursors.None;
             _controlsShown = false;
             UpdateSideNav();
-            UpdateInfoVisibility();
+            UpdateInfo();
         }
     }
 
@@ -428,7 +428,7 @@ public partial class VideoViewerView : UserControl
             if (Window.GetWindow(this) is { } w) w.Cursor = Cursors.None;
             _controlsShown = false;
             UpdateSideNav();
-            UpdateInfoVisibility();
+            UpdateInfo();
             _hideTimer.Stop();
         }
         else
@@ -448,14 +448,19 @@ public partial class VideoViewerView : UserControl
 
     private void OnMainVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.IsFullScreen))
-            UpdateInfoVisibility();
+        if (e.PropertyName == nameof(MainViewModel.IsFullScreen)
+            || e.PropertyName == nameof(MainViewModel.StatusText)
+            || e.PropertyName == nameof(MainViewModel.ShowFullscreenInfo))
+        {
+            UpdateInfo();
+        }
     }
 
-    private void UpdateInfoVisibility()
+    private void UpdateInfo()
     {
-        if (FullscreenInfoBorder == null) return;
-        bool fullscreen = _mainVm?.IsFullScreen == true;
-        FullscreenInfoBorder.Visibility = (_controlsShown && fullscreen) ? Visibility.Visible : Visibility.Collapsed;
+        if (FullscreenInfoBorder == null || InfoText == null) return;
+        bool show = _mainVm?.IsFullScreen == true && _controlsShown && !string.IsNullOrEmpty(_mainVm.StatusText);
+        InfoText.Text = _mainVm?.StatusText ?? string.Empty;
+        FullscreenInfoBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 }

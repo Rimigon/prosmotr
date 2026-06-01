@@ -326,6 +326,21 @@ Magick.NET (конвертация в PNG в памяти), остальное �
   Поэтому `ShowControls`/`HideControlsIfPlaying` выставляют курсор явно на `Overlay`
   (Grid с фоном `#01000000`, который перехватывает hit-test поверх видео) и синхронно
   на `Window.GetWindow(this).Cursor`, чтобы весь HWND был согласован.
+- **Инфо-плашка (имя, размер, порядок файла) в полноэкранном режиме скрывается вместе с chrome.**
+  Для фото — зависит от `MainViewModel.ShowFullscreenInfo` (`IsFullScreen && ChromeVisible && StatusText не пуст`);
+  для видео — `VideoViewerView.UpdateInfo` проверяет `_mainVm.IsFullScreen && _controlsShown`.
+  Таким образом плашка показывается при движении мыши/взаимодействии и прячется по таймеру
+  одновременно с панелью управления.
+  **Важно:** внутри `VideoViewerView` нельзя биндиться через `RelativeSource AncestorType=Window`
+  к свойствам `MainWindow`, потому что `LibVLCSharp.WPF` рендерит `VideoView.Content`
+  в отдельном `ForegroundWindow` — `AncestorType=Window` найдёт уже это окно, а не `MainWindow`.
+  Поэтому текст и видимость инфо-плашки видео задаются из code-behind через `_mainVm`
+  (полученный через `Window.GetWindow(this)` **до** перемещения контента в `ForegroundWindow`).
+- **Полноэкранный режим и airspace-окно видео.**
+  После `ApplyFullScreen` (где размер/стиль окна меняются через Win32 API) вызывается
+  `Dispatcher.BeginInvoke(UpdateLayout, DispatcherPriority.Render)`. Это нужно, чтобы
+  `ForegroundWindow` LibVLCSharp.WPF получил событие `LayoutUpdated` и пересчитал позицию
+  overlay-окна — иначе панель/инфо-плашка иногда оказываются смещены или не видны.
 
 ---
 
