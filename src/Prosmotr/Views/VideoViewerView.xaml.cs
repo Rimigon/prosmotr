@@ -60,6 +60,8 @@ public partial class VideoViewerView : UserControl
         // Контекстное меню по правому клику (аудио, субтитры, скорость, действия с файлом).
         Overlay.ContextMenu = new ContextMenu();
         Overlay.ContextMenuOpening += OnContextMenuOpening;
+
+        WeakReferenceMessenger.Default.Register<VideoViewerView, ToggleChromeMessage>(this, static (r, _) => r.OnToggleChrome());
     }
 
     private MainViewModel? MainVm => Window.GetWindow(this)?.DataContext as MainViewModel;
@@ -98,6 +100,7 @@ public partial class VideoViewerView : UserControl
         _hideTimer.Stop();
         _clickTimer.Stop();
         _pauseShowTimer.Stop();
+        WeakReferenceMessenger.Default.Unregister<ToggleChromeMessage>(this);
         Detach();
     }
 
@@ -407,5 +410,22 @@ public partial class VideoViewerView : UserControl
         var visibility = show ? Visibility.Visible : Visibility.Collapsed;
         PrevFileButton.Visibility = visibility;
         NextFileButton.Visibility = visibility;
+    }
+
+    private void OnToggleChrome()
+    {
+        if (_controlsShown)
+        {
+            ControlBar.Visibility = Visibility.Collapsed;
+            Overlay.Cursor = Cursors.None;
+            if (Window.GetWindow(this) is { } w) w.Cursor = Cursors.None;
+            _controlsShown = false;
+            UpdateSideNav();
+            _hideTimer.Stop();
+        }
+        else
+        {
+            ShowControls();
+        }
     }
 }

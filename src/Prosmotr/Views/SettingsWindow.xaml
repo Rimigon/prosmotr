@@ -246,6 +246,18 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
+                        <TextBlock Text="Клавиша скрытия панели управления" Style="{StaticResource RowLabel}" />
+                        <ComboBox Grid.Column="1" Width="120" ItemsSource="{Binding ExitKeys}"
+                                  SelectedItem="{Binding ToggleChromeKey, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <TextBlock Text="Открывать последний файл при запуске" Style="{StaticResource RowLabel}" />
                         <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding OpenLastOnStartup, Mode=TwoWay}" />
                     </Grid>

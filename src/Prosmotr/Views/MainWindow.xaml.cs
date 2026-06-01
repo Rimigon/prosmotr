@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shell;
 using System.Windows.Threading;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 using Prosmotr.Models;
 using Prosmotr.Services;
@@ -414,6 +415,30 @@ public partial class MainWindow : FluentWindow
         if (Enum.TryParse<Key>(_settings.Settings.ExitKey, out var exitKey) && key == exitKey)
         {
             Close();
+            return true;
+        }
+
+        // Клавиша скрытия/показа элементов управления (настраивается).
+        if (Enum.TryParse<Key>(_settings.Settings.ToggleChromeKey, out var toggleChromeKey) && key == toggleChromeKey)
+        {
+            if (_vm.CurrentContent is ImageViewerViewModel)
+            {
+                _vm.ChromeVisible = !_vm.ChromeVisible;
+                if (_vm.ChromeVisible)
+                {
+                    Cursor = Cursors.Arrow;
+                    RestartChromeTimer();
+                }
+                else
+                {
+                    Cursor = Cursors.None;
+                    _chromeHideTimer.Stop();
+                }
+            }
+            else if (_vm.CurrentContent is VideoViewerViewModel)
+            {
+                WeakReferenceMessenger.Default.Send(new ToggleChromeMessage());
+            }
             return true;
         }
 

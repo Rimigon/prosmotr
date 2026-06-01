@@ -24,7 +24,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     public IReadOnlyList<string> ExitKeys { get; } = new[]
     {
-        "End", "Home", "Insert", "Delete", "Escape",
+        "PageDown", "PageUp", "End", "Home", "Insert", "Delete", "Escape",
         "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
         "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P",
         "A", "S", "D", "F", "G", "H", "J", "K", "L",
@@ -50,6 +50,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private bool _integrateShell;
     [ObservableProperty] private bool _isAssociationsRegistered;
     [ObservableProperty] private string _exitKey = "End";
+    [ObservableProperty] private string _toggleChromeKey = "PageDown";
 
     public SettingsViewModel(
         ISettingsService settings,
@@ -86,6 +87,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         MatchExplorerSort = s.MatchExplorerSort;
         IntegrateShell = s.IntegrateShell;
         ExitKey = s.ExitKey;
+        ToggleChromeKey = s.ToggleChromeKey;
         IsAssociationsRegistered = _assoc.IsRegistered;
         _loading = false;
     }
@@ -112,6 +114,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         s.MatchExplorerSort = MatchExplorerSort;
         s.IntegrateShell = IntegrateShell;
         s.ExitKey = ExitKey;
+        s.ToggleChromeKey = ToggleChromeKey;
         _settings.Save(); // поднимет SettingsChanged → тема/раскладка применятся вживую
     }
 
@@ -133,6 +136,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     partial void OnFrameByFrameSeekChanged(bool value) => Commit();
     partial void OnMatchExplorerSortChanged(bool value) => Commit();
     partial void OnExitKeyChanged(string value) => Commit();
+    partial void OnToggleChromeKeyChanged(string value) => Commit();
 
     partial void OnIntegrateShellChanged(bool value)
     {

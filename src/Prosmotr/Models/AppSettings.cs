@@ -51,6 +51,8 @@ public sealed class AppSettings
     // --- Горячие клавиши ---
     /// <summary>Клавиша для закрытия программы (название из System.Windows.Input.Key).</summary>
     public string ExitKey { get; set; } = "End";
+    /// <summary>Клавиша для скрытия/показа элементов управления (название из System.Windows.Input.Key).</summary>
+    public string ToggleChromeKey { get; set; } = "PageDown";
 
     // --- Интеграция с Windows ---
     /// <summary>Регистрировать ассоциации и контекстное меню при запуске.</summary>
