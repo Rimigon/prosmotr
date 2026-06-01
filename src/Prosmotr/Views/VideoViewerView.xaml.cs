@@ -16,6 +16,7 @@ public partial class VideoViewerView : UserControl
     private VideoViewerViewModel? _vm;
     private bool _suppressSlider;
     private bool _controlsShown = true;
+    private MainViewModel? _mainVm;
     private ContextMenu? _audioMenu;
     private ContextMenu? _subtitleMenu;
     private ContextMenu? _speedMenu;
@@ -70,6 +71,7 @@ public partial class VideoViewerView : UserControl
     // привязываем новый плеер и запускаем здесь, иначе остаётся старый (пустой кадр).
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        DetachMainVm();
         Detach();
         if (DataContext is VideoViewerViewModel vm)
         {
@@ -93,6 +95,8 @@ public partial class VideoViewerView : UserControl
         ShowControls();
         _vm.Start();
         Dispatcher.BeginInvoke(new Action(FocusHostWindow), DispatcherPriority.Loaded);
+        _mainVm = Window.GetWindow(this)?.DataContext as MainViewModel;
+        if (_mainVm != null) _mainVm.PropertyChanged += OnMainVmPropertyChanged;
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -101,6 +105,7 @@ public partial class VideoViewerView : UserControl
         _clickTimer.Stop();
         _pauseShowTimer.Stop();
         WeakReferenceMessenger.Default.Unregister<ToggleChromeMessage>(this);
+        DetachMainVm();
         Detach();
     }
 
@@ -383,6 +388,7 @@ public partial class VideoViewerView : UserControl
         if (Window.GetWindow(this) is { } w) w.Cursor = Cursors.Arrow;
         _controlsShown = true;
         UpdateSideNav();
+        UpdateInfoVisibility();
         _hideTimer.Stop();
         _hideTimer.Start();
     }
@@ -399,6 +405,7 @@ public partial class VideoViewerView : UserControl
             if (Window.GetWindow(this) is { } w) w.Cursor = Cursors.None;
             _controlsShown = false;
             UpdateSideNav();
+            UpdateInfoVisibility();
         }
     }
 
@@ -421,11 +428,34 @@ public partial class VideoViewerView : UserControl
             if (Window.GetWindow(this) is { } w) w.Cursor = Cursors.None;
             _controlsShown = false;
             UpdateSideNav();
+            UpdateInfoVisibility();
             _hideTimer.Stop();
         }
         else
         {
             ShowControls();
         }
+    }
+
+    private void DetachMainVm()
+    {
+        if (_mainVm != null)
+        {
+            _mainVm.PropertyChanged -= OnMainVmPropertyChanged;
+            _mainVm = null;
+        }
+    }
+
+    private void OnMainVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.IsFullScreen))
+            UpdateInfoVisibility();
+    }
+
+    private void UpdateInfoVisibility()
+    {
+        if (FullscreenInfoBorder == null) return;
+        bool fullscreen = _mainVm?.IsFullScreen == true;
+        FullscreenInfoBorder.Visibility = (_controlsShown && fullscreen) ? Visibility.Visible : Visibility.Collapsed;
     }
 }

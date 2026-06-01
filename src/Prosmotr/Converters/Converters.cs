@@ -24,6 +24,23 @@ public sealed class BoolToVisibilityConverter : IValueConverter
         value is Visibility.Visible;
 }
 
+/// <summary>Все значения true → Visible, иначе Collapsed.</summary>
+public sealed class BoolAndToVisibilityConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        foreach (var v in values)
+        {
+            if (v is not bool b || !b)
+                return Visibility.Collapsed;
+        }
+        return Visibility.Visible;
+    }
+
+    public object[] ConvertBack(object? value, Type[] targetTypes, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>null → Collapsed, иначе Visible.</summary>
 public sealed class NullToVisibilityConverter : IValueConverter
 {

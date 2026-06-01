@@ -52,6 +52,7 @@
     <!-- Конвертеры -->
     <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
     <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+    <conv:BoolAndToVisibilityConverter x:Key="BoolAndToVis" />
     <conv:NullToVisibilityConverter x:Key="NullToVis" />
     <conv:MillisecondsToTimeConverter x:Key="MsToTime" />
     <conv:PlaybackRateToStringConverter x:Key="RateToString" />

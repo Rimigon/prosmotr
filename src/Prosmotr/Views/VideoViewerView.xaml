@@ -23,6 +23,14 @@
                 <!-- Область клика: один клик — пауза/воспроизведение, двойной — полный экран -->
                 <Border x:Name="ClickArea" Grid.Row="0" Background="Transparent" />
 
+                <!-- Инфо-плашка в полноэкранном режиме (замена верхней панели Toolbar) -->
+                <Border x:Name="FullscreenInfoBorder" Grid.Row="0" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,14,0,0"
+                        Background="#D91A1A1A" CornerRadius="6" Padding="14,6"
+                        IsHitTestVisible="False" Visibility="Collapsed">
+                    <TextBlock Text="{Binding DataContext.StatusText, RelativeSource={RelativeSource AncestorType=Window}}"
+                               Foreground="White" FontSize="13" Opacity="0.9" />
+                </Border>
+
                 <!-- Индикатор смены скорости -->
                 <Border Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center"
                         Background="#AA000000" CornerRadius="10" Padding="22,12"
