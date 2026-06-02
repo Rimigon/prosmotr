@@ -462,8 +462,13 @@ public partial class MainWindow : FluentWindow
                     _vm.NextCommand.Execute(null);
                 return true;
             case Key.Delete:
-                if (_vm.DeleteCommand.CanExecute(null)) _vm.DeleteCommand.Execute(null);
-                return true;
+            case Key.Decimal:
+                if (_vm.DeleteCommand.CanExecute(null))
+                {
+                    _vm.DeleteCommand.Execute(null);
+                    return true;
+                }
+                return false;
             case Key.F:
                 _vm.ToggleFullScreenCommand.Execute(null);
                 return true;

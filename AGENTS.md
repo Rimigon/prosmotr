@@ -227,10 +227,19 @@ Magick.NET (конвертация в PNG в памяти), остальное �
   `MainWindow.OpenProperties` показывает окно. `FilePropertiesViewModel` берёт базовые поля из
   `MediaItem`, размеры фото — через `MagickImageInfo`, разрешение/длительность/FPS видео — через
   `Media.Parse` LibVLC (поэтому окну нужен `LibVlcProvider`). Системный путь (`ShellExecuteEx`) убран.
-- **Удаление — на STA-потоке.** `FileDeletionService.DeleteAsync` выполняет `SHFileOperation`
-  (перемещение в Корзину) на **выделенном STA-потоке**, а НЕ через `Task.Run` (MTA-пул). Из MTA-потока
-  shell-операция после нескольких вызовов начинает периодически отказывать («после 3–5 файлов перестаёт
-  удалять»). Не возвращай это на `Task.Run`. То же требование STA — у восстановления (ниже).
+- **Удаление — на STA-потоке, через IFileOperation.** `FileDeletionService` использует
+  COM-интерфейс `IFileOperation` (Vista+ API, заменивший устаревший `SHFileOperation`),
+  с флагом **`FOFX_NOCOPYHOOKS`** — он пропускает buggy shell extensions (TortoiseGit,
+  антивирусные хуки и пр.), которые вызывали зависание `SHFileOperation`.
+  Каждый вызов выполняется в **новом STA-потоке**; `SemaphoreSlim` ограничивает до 1
+  одновременной операции, чтобы Explorer не захлёбывался.
+  **Критично:** при зависании `await` вечно ждал бы результат из STA-потока, и
+  `finally { _sem.Release(); }` никогда не отработал бы — семафор остался бы захвачен
+  навсегда. Поэтому используется **`await Task.WhenAny(tcs.Task, Task.Delay(10с))`**;
+  таймаут гарантирует, что семафор всегда освобождается. Старый поток (`IsBackground`)
+  продолжает висеть, но приложение не умирает. Не убирай `Task.WhenAny`.
+  Не возвращай на обычный `Task.Run` — `IFileOperation` требует STA.
+  То же требование STA — у восстановления (ниже).
 - **Отмена удаления.** `RecycleBinRestore` (COM `Shell.Application`, namespace Корзины = 10) находит
   элемент по `System.Recycle.DeletedFrom` + имя и вызывает глагол восстановления. Имя глагола
   **локализовано** (рус. «Восстановить», англ. «Restore») — матчится по набору имён, иначе берётся
