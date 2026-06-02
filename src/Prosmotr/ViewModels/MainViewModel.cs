@@ -230,55 +230,70 @@ public sealed partial class MainViewModel : ViewModelBase
 
     // --- Удаление ---
 
-    [RelayCommand(CanExecute = nameof(HasCurrent))]
+    private bool _isDeleting;
+
+    [RelayCommand(CanExecute = nameof(CanDelete))]
     private async Task Delete()
     {
+        if (_isDeleting) return;
         var cur = _nav.Current;
         if (cur == null) return;
 
-        var permanent = _settings.Settings.PermanentDelete;
-
-        if (_settings.Settings.ConfirmDelete)
+        _isDeleting = true;
+        DeleteCommand.NotifyCanExecuteChanged();
+        try
         {
-            var msg = permanent
-                ? $"Удалить «{cur.FileName}» безвозвратно?"
-                : $"Переместить «{cur.FileName}» в Корзину?";
-            var confirmed = await _dialog.ConfirmAsync("Удаление файла", msg, "Удалить", "Отмена");
-            if (!confirmed) return;
-        }
+            var permanent = _settings.Settings.PermanentDelete;
 
-        var index = _nav.CurrentIndex;
-        var ok = await _deletion.DeleteAsync(cur.FullPath, permanent);
-        if (ok)
-        {
-            _positions.Remove(cur.FullPath);
-            _nav.RemoveCurrent();
-
-            var notify = _settings.Settings.ShowDeleteNotification;
-            if (permanent)
+            if (_settings.Settings.ConfirmDelete)
             {
-                ClearUndoState();
-                if (notify)
-                    _notify.Show($"«{cur.FileName}» удалён навсегда.", NotificationKind.Success);
+                var msg = permanent
+                    ? $"Удалить «{cur.FileName}» безвозвратно?"
+                    : $"Переместить «{cur.FileName}» в Корзину?";
+                var confirmed = await _dialog.ConfirmAsync("Удаление файла", msg, "Удалить", "Отмена");
+                if (!confirmed) return;
+            }
+
+            var index = _nav.CurrentIndex;
+            var ok = await _deletion.DeleteAsync(cur.FullPath, permanent);
+            if (ok)
+            {
+                _positions.Remove(cur.FullPath);
+                _nav.RemoveAt(index); // удаляем по зафиксированному индексу, а не по текущему —
+                                      // иначе во время await пользователь мог сменить файл стрелками
+
+                var notify = _settings.Settings.ShowDeleteNotification;
+                if (permanent)
+                {
+                    ClearUndoState();
+                    if (notify)
+                        _notify.Show($"«{cur.FileName}» удалён навсегда.", NotificationKind.Success);
+                }
+                else
+                {
+                    // Запоминаем для отмены. Восстановить можно кнопкой на панели,
+                    // а при включённой плашке — ещё и кнопкой «Отменить» в самом тосте.
+                    _lastDeletedItem = cur;
+                    _lastDeletedIndex = index;
+                    RestoreLastDeleteCommand.NotifyCanExecuteChanged();
+                    if (notify)
+                        _notify.Show($"«{cur.FileName}» перемещён в корзину.", NotificationKind.Success,
+                            "Отменить", () => RestoreLastDeleteCommand.Execute(null));
+                }
             }
             else
             {
-                // Запоминаем для отмены. Восстановить можно кнопкой на панели,
-                // а при включённой плашке — ещё и кнопкой «Отменить» в самом тосте.
-                _lastDeletedItem = cur;
-                _lastDeletedIndex = index;
-                RestoreLastDeleteCommand.NotifyCanExecuteChanged();
-                if (notify)
-                    _notify.Show($"«{cur.FileName}» перемещён в корзину.", NotificationKind.Success,
-                        "Отменить", () => RestoreLastDeleteCommand.Execute(null));
+                _notify.Show("Не удалось удалить файл.", NotificationKind.Error);
             }
         }
-        else
+        finally
         {
-            _notify.Show("Не удалось удалить файл.", NotificationKind.Error);
+            _isDeleting = false;
+            DeleteCommand.NotifyCanExecuteChanged();
         }
     }
 
+    private bool CanDelete => !_isDeleting && _nav.Current != null;
     private bool HasCurrent => _nav.Current != null;
 
     // --- Отмена удаления (восстановление из Корзины) ---

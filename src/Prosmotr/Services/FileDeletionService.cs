@@ -22,6 +22,9 @@ public sealed class FileDeletionService : IFileDeletionService
         var thread = new Thread(() =>
         {
             bool result;
+            // SHFileOperation в Windows 11 требует инициализации COM/OLE в STA-потоке,
+            // иначе после 3–4 вызовов операция замирает навсегда.
+            NativeMethods.OleInitialize(IntPtr.Zero);
             try
             {
                 if (!File.Exists(path))
@@ -41,6 +44,10 @@ public sealed class FileDeletionService : IFileDeletionService
             catch
             {
                 result = false;
+            }
+            finally
+            {
+                NativeMethods.OleUninitialize();
             }
             tcs.SetResult(result);
         })

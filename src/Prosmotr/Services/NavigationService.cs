@@ -60,20 +60,34 @@ public sealed class NavigationService : INavigationService
     public void RemoveCurrent()
     {
         if (_index < 0 || _index >= _items.Count) return;
+        RemoveAt(_index);
+    }
 
-        _items.RemoveAt(_index);
-        ListChanged?.Invoke(this, EventArgs.Empty);
+    public void RemoveAt(int index)
+    {
+        if (index < 0 || index >= _items.Count) return;
+
+        _items.RemoveAt(index);
 
         if (_items.Count == 0)
         {
             _index = -1; // пустое состояние
         }
-        else if (_index >= _items.Count)
+        else if (index == _index)
         {
-            _index = _items.Count - 1; // удалён последний → показываем предыдущий
+            // Удалён именно текущий — индекс уже указывает на «следующий»
+            // (список сдвинулся влево). Если удаляли последний — показываем предыдущий.
+            if (_index >= _items.Count)
+                _index = _items.Count - 1;
         }
-        // иначе индекс уже указывает на «следующий» файл (список сдвинулся влево)
+        else if (index < _index)
+        {
+            // Удалён элемент перед текущим — текущий сдвинулся влево.
+            _index--;
+        }
+        // иначе удалён после текущего — ничего не меняется
 
+        ListChanged?.Invoke(this, EventArgs.Empty);
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 

@@ -31,8 +31,18 @@ public sealed class ImageCache : IImageCache
         {
             if (_map.TryGetValue(path, out var existing))
             {
-                Touch(path);
-                return existing;
+                // Не отдаём мёртвые задачи — иначе вызывающий получит OperationCanceledException
+                // или AggregateException на старом токене, хотя новый токен ещё жив.
+                if (existing.IsCompleted && (existing.IsCanceled || existing.IsFaulted))
+                {
+                    _map.Remove(path);
+                    _lru.Remove(path);
+                }
+                else
+                {
+                    Touch(path);
+                    return existing;
+                }
             }
 
             var task = _decoder.LoadAsync(path, 0, ct);
