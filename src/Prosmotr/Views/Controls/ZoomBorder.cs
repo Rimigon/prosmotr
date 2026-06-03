@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Prosmotr.Models;
 
 namespace Prosmotr.Views.Controls;
@@ -20,6 +21,7 @@ public class ZoomBorder : Border
 
     private readonly ScaleTransform _scale = new(1, 1);
     private readonly TranslateTransform _translate = new(0, 0);
+    private readonly DispatcherTimer _layoutDebounce;
 
     private FrameworkElement? _child;
     private Point _dragStart;
@@ -38,6 +40,14 @@ public class ZoomBorder : Border
         Focusable = true;
         SizeChanged += OnSizeChanged;
         LayoutUpdated += OnLayoutUpdated;
+        Unloaded += OnUnloaded;
+
+        IsManipulationEnabled = true;
+        ManipulationStarting += OnManipulationStarting;
+        ManipulationDelta += OnManipulationDelta;
+
+        _layoutDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+        _layoutDebounce.Tick += OnLayoutDebounceTick;
     }
 
     public override UIElement Child
@@ -72,6 +82,48 @@ public class ZoomBorder : Border
         if (!_free) ApplyMode();
     }
 
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        SizeChanged -= OnSizeChanged;
+        LayoutUpdated -= OnLayoutUpdated;
+        ManipulationStarting -= OnManipulationStarting;
+        ManipulationDelta -= OnManipulationDelta;
+        _layoutDebounce.Tick -= OnLayoutDebounceTick;
+        _layoutDebounce.Stop();
+    }
+
+    private void OnLayoutDebounceTick(object? sender, EventArgs e)
+    {
+        _layoutDebounce.Stop();
+        ApplyMode();
+    }
+
+    private void OnManipulationStarting(object? sender, ManipulationStartingEventArgs e)
+    {
+        e.Mode = ManipulationModes.Scale | ManipulationModes.Translate;
+    }
+
+    private void OnManipulationDelta(object? sender, ManipulationDeltaEventArgs e)
+    {
+        if (_child == null) return;
+
+        var scale = e.DeltaManipulation.Scale;
+        if (Math.Abs(scale.X - 1.0) > 0.001 || Math.Abs(scale.Y - 1.0) > 0.001)
+        {
+            var factor = (scale.X + scale.Y) / 2.0;
+            ZoomAt(factor, e.ManipulationOrigin);
+        }
+
+        var trans = e.DeltaManipulation.Translation;
+        if (Math.Abs(trans.X) > 0.001 || Math.Abs(trans.Y) > 0.001)
+        {
+            _translate.X += trans.X;
+            _translate.Y += trans.Y;
+            _free = true;
+            RaiseZoom();
+        }
+    }
+
     private void OnLayoutUpdated(object? sender, EventArgs e)
     {
         if (_free || _child == null) return;
@@ -79,8 +131,8 @@ public class ZoomBorder : Border
         if (Math.Abs(natural.Width - _lastNaturalSize.Width) > 0.5 ||
             Math.Abs(natural.Height - _lastNaturalSize.Height) > 0.5)
         {
-            _lastNaturalSize = natural;
-            ApplyMode();
+            _layoutDebounce.Stop();
+            _layoutDebounce.Start();
         }
     }
 

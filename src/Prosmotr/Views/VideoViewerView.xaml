@@ -14,7 +14,7 @@
         <vlc:VideoView x:Name="Video">
             <!-- ВАЖНО (airspace): контролы лежат ВНУТРИ VideoView как его Content,
                  а фон оверлея НЕ полностью прозрачный (#01000000) — иначе не ловятся клики. -->
-            <Grid x:Name="Overlay" Background="#01000000">
+            <Grid x:Name="Overlay" Background="#02000000">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />

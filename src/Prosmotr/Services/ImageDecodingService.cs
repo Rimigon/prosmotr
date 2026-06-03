@@ -53,7 +53,8 @@ public sealed class ImageDecodingService : IImageDecodingService
             image.Resize(geo);
         }
 
-        image.Format = MagickFormat.Png;
+        // BMP кодируется быстрее PNG и не требует сжатия — меньше latency и пиковая память.
+        image.Format = MagickFormat.Bmp;
         using var ms = new MemoryStream();
         image.Write(ms);
         ms.Position = 0;

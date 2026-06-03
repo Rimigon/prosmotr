@@ -218,6 +218,8 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _appCts.Cancel();
+        // Гарантированно сбрасываем позиции видео на диск перед выгрузкой хоста.
+        try { _host?.Services.GetService<IPlaybackPositionStore>()?.Flush(); } catch { }
         // Корректно освобождаем singletons (SettingsService, PlaybackPositionStore, LibVlcProvider).
         try { _host?.Dispose(); } catch { }
         try { _mutex?.ReleaseMutex(); } catch { }

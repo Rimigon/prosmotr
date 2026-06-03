@@ -16,7 +16,7 @@ public interface IImageCache
 /// <summary>Небольшой LRU-кэш декодированных изображений поверх IImageDecodingService.</summary>
 public sealed class ImageCache : IImageCache
 {
-    private const int Capacity = 7;
+    private const int Capacity = 24;
 
     private readonly IImageDecodingService _decoder;
     private readonly object _gate = new();

@@ -31,7 +31,6 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     private readonly IPlaybackPositionStore _positions;
     private readonly IDialogService _dialog;
     private readonly INotificationService _notify;
-    private readonly DispatcherTimer _saveTimer;
 
     private float _pendingRate = 1f;
     private bool _started;
@@ -93,9 +92,6 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         p.EncounteredError += OnError;
         p.TimeChanged += OnTimeChanged;
         p.LengthChanged += OnLengthChanged;
-
-        _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _saveTimer.Tick += OnSaveTimerTick;
     }
 
     /// <summary>Запускается из View после загрузки VideoView (когда готов нативный HWND).</summary>
@@ -143,7 +139,6 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
         _playback.Load(Item.FullPath, startMs);
         _playback.Play();
-        if (!_saveTimer.IsEnabled) _saveTimer.Start();
     }
 
     // --- Команды управления ---
@@ -206,7 +201,6 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         IsEnded = false;
         _playback.Load(Item.FullPath, 0);
         _playback.Play();
-        _saveTimer.Start();
     }
 
     /// <summary>Изменить скорость для текущего видео (вызывается клавишами [ ] / +/-).</summary>
@@ -224,6 +218,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         var clamped = Math.Clamp(ms, 0, Math.Max(0, LengthMs));
         _playback.Time = (long)clamped;
         PositionMs = clamped;
+        SavePosition();
         if (IsEnded && clamped < LengthMs) IsEnded = false;
     }
 
@@ -309,8 +304,6 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         ShowRateBadge = false;
     }
 
-    private void OnSaveTimerTick(object? sender, EventArgs e) => SavePosition();
-
     // --- Реакция на изменение наблюдаемых свойств ---
 
     partial void OnVolumeChanged(int value)
@@ -342,8 +335,8 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         _playback.Mute = IsMuted;
     });
 
-    private void OnPaused(object? sender, EventArgs e) => OnUi(() => IsPlaying = false);
-    private void OnStopped(object? sender, EventArgs e) => OnUi(() => IsPlaying = false);
+    private void OnPaused(object? sender, EventArgs e) => OnUi(() => { IsPlaying = false; SavePosition(); });
+    private void OnStopped(object? sender, EventArgs e) => OnUi(() => { IsPlaying = false; SavePosition(); });
     private void OnError(object? sender, EventArgs e) => OnUi(() => { HasError = true; IsPlaying = false; });
 
     private void OnEndReached(object? sender, EventArgs e) => OnUi(() =>
@@ -351,7 +344,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         IsPlaying = false;
         IsEnded = true;
         PositionMs = LengthMs;
-        _saveTimer.Stop();
+        SavePosition();
         _positions.Remove(Item.FullPath); // досмотрено — позицию не храним
     });
 
@@ -386,8 +379,6 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        _saveTimer.Tick -= OnSaveTimerTick;
-        _saveTimer.Stop();
         SavePosition();
 
         var p = _playback.Player;

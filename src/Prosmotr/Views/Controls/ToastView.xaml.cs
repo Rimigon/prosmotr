@@ -17,6 +17,9 @@ public partial class ToastView : UserControl
 {
     private INotificationService? _service;
     private readonly DispatcherTimer _hideTimer;
+    private readonly Queue<NotificationRequest> _queue = new();
+    private const int MaxQueueLength = 3;
+    private bool _showing;
     private Action? _pendingAction;
 
     public ToastView()
@@ -44,6 +47,23 @@ public partial class ToastView : UserControl
     }
 
     private void OnRequested(object? sender, NotificationRequest request)
+    {
+        if (_queue.Count >= MaxQueueLength)
+            _queue.Dequeue(); // вытесняем самое старое при спаме
+
+        _queue.Enqueue(request);
+        if (!_showing) DequeueAndShow();
+    }
+
+    private void DequeueAndShow()
+    {
+        if (_showing || _queue.Count == 0) return;
+        var request = _queue.Dequeue();
+        _showing = true;
+        Present(request);
+    }
+
+    private void Present(NotificationRequest request)
     {
         Icon.Symbol = SymbolFor(request.Kind);
         Root.Background = BrushFor(request.Kind);
@@ -78,8 +98,13 @@ public partial class ToastView : UserControl
     private void Hide()
     {
         _hideTimer.Stop();
+        _showing = false;
         var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(200));
-        fade.Completed += (_, _) => Root.Visibility = Visibility.Collapsed;
+        fade.Completed += (_, _) =>
+        {
+            Root.Visibility = Visibility.Collapsed;
+            DequeueAndShow();
+        };
         Root.BeginAnimation(OpacityProperty, fade);
         Slide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-14, TimeSpan.FromMilliseconds(200)));
     }

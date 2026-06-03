@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Prosmotr.Models;
@@ -41,11 +42,34 @@ public sealed class SettingsService : ISettingsService, IDisposable
             {
                 var json = File.ReadAllText(_file);
                 var loaded = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
-                if (loaded != null) return loaded;
+                if (loaded != null)
+                {
+                    ValidateAndFix(loaded);
+                    return loaded;
+                }
             }
         }
         catch { /* битый файл — используем значения по умолчанию */ }
         return new AppSettings();
+    }
+
+    private static void ValidateAndFix(AppSettings settings)
+    {
+        var defaults = new AppSettings();
+        foreach (var prop in typeof(AppSettings).GetProperties())
+        {
+            if (!prop.CanRead || !prop.CanWrite) continue;
+            var value = prop.GetValue(settings);
+            var attrs = prop.GetCustomAttributes<System.ComponentModel.DataAnnotations.ValidationAttribute>();
+            foreach (var attr in attrs)
+            {
+                if (!attr.IsValid(value))
+                {
+                    prop.SetValue(settings, prop.GetValue(defaults));
+                    break;
+                }
+            }
+        }
     }
 
     public void Save()

@@ -156,6 +156,12 @@ app/                         — ⚠️ опубликованная копия 
   учитывает `LayoutTransform` (поворот). Режимы: `Fit` (вписать), `ActualSize` (100%), `Fill` (заполнить).
 - `ImageViewerView.xaml.cs` пересчитывает зум (`Zoom.SetMode(Fit)`) при смене `Image`/DataContext
   через `Dispatcher.BeginInvoke(..., DispatcherPriority.Render)` — чтобы binding успел применить Source.
+- **`LayoutUpdated` throttled.** `ZoomBorder` держит `DispatcherTimer` с интервалом **40 мс**:
+  каждый `LayoutUpdated` лишь **рестартует** таймер, а `ApplyMode()` вызывается только после
+  затихания событий. Это предотвращает лишние пересчёты при быстром resize окна.
+- **Touch / pinch-to-zoom.** `IsManipulationEnabled = true`. `ManipulationDelta` разбирает
+  `DeltaManipulation.Scale` (pinch → `ZoomAt`) и `DeltaManipulation.Translation` (pan →
+  сдвиг `_translate`). Работает на планшетах / Surface без стилуса.
 
 ### 5.2. Стартовый экран (`EmptyStateView`) обязан прокручиваться
 
@@ -184,12 +190,13 @@ View висит на `DataContextChanged`, а не только на `Loaded` (�
 ### 5.5. Декодирование изображений: нативный WPF vs Magick
 
 `ImageDecodingService`: WEBP/HEIC/HEIF (`SupportedFormats.RequiresMagick`) декодируются через
-Magick.NET (конвертация в PNG в памяти), остальное — нативным WPF (`BitmapImage` + `OnLoad`,
-синхронно, чтобы `Width/Height` были доступны сразу). Анимированные GIF рисует **не** этот сервис,
-а XamlAnimatedGif прямо во View (`AnimationBehavior.SourceUri`).
+Magick.NET (конвертация в **BMP** в памяти — раньше был PNG, но BMP не требует сжатия и быстрее),
+остальное — нативным WPF (`BitmapImage` + `OnLoad`, синхронно, чтобы `Width/Height` были доступны
+сразу). Анимированные GIF рисует **не** этот сервис, а XamlAnimatedGif прямо во View
+(`AnimationBehavior.SourceUri`).
 
-`ImageCache` — небольшой LRU (`Capacity = 7`) полноразмерных изображений; используется для
-мгновенного переключения между соседними фото (`Preload` соседей). Полный размер = `decodePixelWidth=0`.
+`ImageCache` — LRU полноразмерных изображений (`Capacity = 24`; раньше 7) для мгновенного
+переключения между соседними фото (`Preload` соседей). Полный размер = `decodePixelWidth=0`.
 
 ### 5.6. Порядок галереи: приоритет источников сортировки
 
@@ -225,6 +232,8 @@ Magick.NET (конвертация в PNG в памяти), остальное �
   **не отрисовывался** (вызов `Show` корректен, но плашка не появлялась). Заменён на собственный
   `Views/Controls/ToastView` + `INotificationService`. Не возвращай Snackbar. `ToastView` есть и в
   `MainWindow`, и внутри оверлея `VideoViewerView` — иначе тост не виден поверх видео (airspace VLC).
+  **Очередь:** `ToastView` держит `Queue<NotificationRequest>` (max 3). Новое уведомление не
+  прерывает текущее мгновенно — встаёт в очередь и показывается после скрытия предыдущего.
 - **Свойства файла — собственное окно `FilePropertiesWindow`** (в стиле приложения, FluentWindow),
   а НЕ системный диалог Windows. `MainViewModel.ShowProperties` поднимает событие `PropertiesRequested`,
   `MainWindow.OpenProperties` показывает окно. `FilePropertiesViewModel` берёт базовые поля из
@@ -356,25 +365,35 @@ Magick.NET (конвертация в PNG в памяти), остальное �
 
 ### 5.13. Нюансы Фазы 1 (P1) — безопасность, архитектура, DI
 
-- **Атомарное сохранение поворота.** `ImageViewerViewModel.SaveRotationAsync` пишет во временный
-  файл, а затем вызывает `File.Move(tmp, original, overwrite: true)` — на одном томе это атомарное
-  переименование. Не используй `File.Copy` + `File.Delete` — сбой между ними испортит файл.
-- `ImageDecodingService` **не глотает `OutOfMemoryException`** — она прокидывается выше,
-  чтобы приложение корректно упало с логом в `startup.log`. Общий `catch { return null; }`
-  оставлен только для остальных исключений.
-- **Отмена предыдущего открытия папки.** `MainViewModel.OpenPathAsync` держит
-  `CancellationTokenSource _openCts`. При повторном вызове предыдущий `ct` отменяется,
-  и `MediaLibraryService.ScanAsync` прерывает перечисление файлов через
-  `ct.ThrowIfCancellationRequested()`. Это предотвращает зависшее IO при быстрой смене папок.
-- **Shutdown через `CancellationTokenSource`.** В `App.xaml.cs` `_shuttingDown : bool` заменён на
-  `CancellationTokenSource _appCts`. Его токен передаётся в `NamedPipeServerStream.WaitForConnectionAsync`,
-  а `IsCancellationRequested` — проверка цикла pipe-сервера. При выходе вызывается `_appCts.Cancel()`.
-- **Зомби-STA-потоки удаления.** `FileDeletionService` после таймаута `IFileOperation`
-  (10 с) делает `thread.Join(TimeSpan.FromSeconds(15))`; если поток не завершился —
-  `thread.Interrupt()`. Это ограничивает число висящих STA-потоков при массовом удалении.
-- **`MediaItem` не содержит UI-логики.** Свойство `FileSizeText` удалено из модели;
-  форматирование `long` → человекочитаемый размер вынесено в `Converters/FileSizeConverter`.
-  `MainViewModel.UpdateStatus` использует `FileSizeConverter.Format(...)`.
+- **Атомарное сохранение поворота.** ...
+- `ImageDecodingService` **не глотает `OutOfMemoryException`** — ...
+- **Отмена предыдущего открытия папки.** ...
+- **Shutdown через `CancellationTokenSource`.** ...
+- **Зомби-STA-потоки удаления.** ...
+- **`MediaItem` не содержит UI-логики.** ...
+
+### 5.14. Нюансы Фазы 2 (P2) — производительность, UX, валидация
+
+- **Magick → BMP вместо PNG.** `ImageDecodingService.LoadWithMagick` пишет `MagickImage`
+  в `MemoryStream` с `MagickFormat.Bmp` (вместо `Png`). BMP не сжимает → меньше latency,
+  быстрее открытие HEIC/WebP большого размера.
+- **`ZoomBorder` debounce + touch.** `LayoutUpdated` теперь throttled через `DispatcherTimer`
+  (40 мс), а не вызывает `ApplyMode` на каждый чих визуального дерева. Добавлена обработка
+  манипуляций (pinch/pan) для touch-экранов.
+- **`ToastView` очередь.** Уведомления выстраиваются в очередь (max 3) и показываются
+  последовательно. При спаме (например, массовое удаление) пользователь не теряет сообщения.
+- **`SavePosition` оптимизирован.** `VideoViewerViewModel` больше не пишет JSON каждую секунду
+  через `DispatcherTimer`. Позиция сохраняется при событиях: `Paused`, `Stopped`, `EndReached`,
+  `SeekTo`, `Dispose`, а также явно при выходе (`App.OnExit` вызывает `Flush()` у
+  `IPlaybackPositionStore`). `PlaybackPositionStore` и так debounce 1.5 с перед записью на диск.
+- **`ImageCache` capacity = 24.** LRU-кэш полноразмерных изображений увеличен с 7 до 24 —
+  быстрая прокрутка длинных серий фото не вызывает повторного декодирования на современных ПК.
+- **Airspace alpha ≥ 2.** Фон оверлея `VideoViewerView` изменён с `#01000000` на `#02000000`
+  — рекомендация LibVLCSharp.WPF для корректного hit-test (особенно в High Contrast).
+- **Валидация `AppSettings`.** Свойства `SeekStepSeconds`, `SlideshowIntervalSeconds`,
+  `DefaultPlaybackRate` помечены `[Range(...)]`. При загрузке `settings.json`
+  `SettingsService.ValidateAndFix` сравнивает значения с атрибутами и заменяет невалидные
+  на дефолтные (например, `"SeekStepSeconds": -5` → `5`).
 
 ---
 

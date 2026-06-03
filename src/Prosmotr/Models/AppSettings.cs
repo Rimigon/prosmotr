@@ -1,10 +1,13 @@
 namespace Prosmotr.Models;
 
+using System.ComponentModel.DataAnnotations;
+
 /// <summary>Все пользовательские настройки, сохраняемые между запусками (JSON в %APPDATA%).</summary>
 public sealed class AppSettings
 {
     // --- Видео ---
     /// <summary>Глобальная скорость воспроизведения по умолчанию для всех новых видео.</summary>
+    [Range(0.25, 5.0)]
     public float DefaultPlaybackRate { get; set; } = 1.0f;
     /// <summary>Запоминать последнюю скорость отдельно для каждого файла.</summary>
     public bool RememberRatePerFile { get; set; } = false;
@@ -13,6 +16,7 @@ public sealed class AppSettings
     public int LastVolume { get; set; } = 100;
     public bool LastMuted { get; set; } = false;
     /// <summary>Шаг перемотки видео клавишами ←/→ в полноэкранном режиме, секунд.</summary>
+    [Range(1, 3600)]
     public int SeekStepSeconds { get; set; } = 5;
     /// <summary>Покадровая перемотка: ←/→ шагают по одному кадру вместо <see cref="SeekStepSeconds"/>.</summary>
     public bool FrameByFrameSeek { get; set; } = false;
@@ -36,6 +40,7 @@ public sealed class AppSettings
     public bool AutoHideControls { get; set; } = true;
 
     // --- Слайд-шоу ---
+    [Range(1, 60)]
     public int SlideshowIntervalSeconds { get; set; } = 4;
 
     // --- Сортировка ---
