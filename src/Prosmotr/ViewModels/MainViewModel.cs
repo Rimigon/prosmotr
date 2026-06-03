@@ -13,7 +13,7 @@ using Prosmotr.Services.Abstractions;
 namespace Prosmotr.ViewModels;
 
 /// <summary>Главный оркестратор: открытие, навигация, удаление, полноэкран, слайд-шоу.</summary>
-public sealed partial class MainViewModel : ViewModelBase
+public sealed partial class MainViewModel : ViewModelBase, IDisposable
 {
     private readonly IMediaLibraryService _library;
     private readonly INavigationService _nav;
@@ -280,5 +280,23 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(ShowWindowNavArrows));
         OnPropertyChanged(nameof(ShowFullscreenInfo));
+    }
+
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        _openCts?.Cancel();
+        _openCts?.Dispose();
+        _slideshowTimer.Stop();
+
+        if (CurrentContent is IDisposable disposable)
+        {
+            CurrentContent = null;
+            disposable.Dispose();
+        }
     }
 }

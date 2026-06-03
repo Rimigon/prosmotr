@@ -28,7 +28,21 @@ public sealed class VideoPlaybackService : IDisposable
     public void Load(string path, long startMs = 0)
     {
         var old = _media;
-        _media = new Media(_provider.LibVlc, new Uri(path));
+
+        Media? media = null;
+        try
+        {
+            media = new Media(_provider.LibVlc, new Uri(path, UriKind.Absolute));
+        }
+        catch (UriFormatException)
+        {
+            // Пути со спецсимволами (#, %) не всегда парсятся как абсолютный URI.
+            // Экранируем локальный путь через file:// URI.
+            var builder = new UriBuilder { Scheme = Uri.UriSchemeFile, Path = path };
+            media = new Media(_provider.LibVlc, builder.Uri);
+        }
+
+        _media = media;
         if (startMs > 1000)
             _media.AddOption($":start-time={startMs / 1000.0:0.###}");
         Player.Media = _media;

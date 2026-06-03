@@ -13,7 +13,8 @@ public sealed class ShellService : IShellService
         if (!File.Exists(path) && !Directory.Exists(path)) return;
         try
         {
-            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+            var safe = path.Replace("\"", "\\\"");
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{safe}\"") { UseShellExecute = true });
         }
         catch { /* проводник недоступен — игнорируем */ }
     }
@@ -24,7 +25,8 @@ public sealed class ShellService : IShellService
         if (string.IsNullOrEmpty(folder)) return;
         try
         {
-            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{folder}\"") { UseShellExecute = true });
+            var safe = folder.Replace("\"", "\\\"");
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{safe}\"") { UseShellExecute = true });
         }
         catch { }
     }
@@ -39,9 +41,10 @@ public sealed class ShellService : IShellService
         if (!File.Exists(path)) return;
         try
         {
+            var safe = path.Replace("\"", "\\\"");
             // Системный диалог «Открыть с помощью…» (надёжно работает через rundll32).
             Process.Start(new ProcessStartInfo("rundll32.exe",
-                $"shell32.dll,OpenAs_RunDLL {path}") { UseShellExecute = true });
+                $"shell32.dll,OpenAs_RunDLL {safe}") { UseShellExecute = true });
         }
         catch { }
     }

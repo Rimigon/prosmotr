@@ -92,7 +92,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _loading = false;
     }
 
-    private void Commit()
+    private void Commit(bool immediate = false)
     {
         if (_loading) return;
         var s = _settings.Settings;
@@ -115,11 +115,14 @@ public sealed partial class SettingsViewModel : ViewModelBase
         s.IntegrateShell = IntegrateShell;
         s.ExitKey = ExitKey;
         s.ToggleChromeKey = ToggleChromeKey;
-        _settings.Save(); // поднимет SettingsChanged → тема/раскладка применятся вживую
+        if (immediate)
+            _settings.Save(); // поднимет SettingsChanged → тема/раскладка применятся вживую
+        else
+            _settings.SaveDebounced();
     }
 
     // Любое изменение фиксируем в настройках.
-    partial void OnTheme_Changed(AppTheme value) { Commit(); if (!_loading) _theme.Apply(value); }
+    partial void OnTheme_Changed(AppTheme value) { Commit(immediate: true); if (!_loading) _theme.Apply(value); }
     partial void OnDefaultPlaybackRateChanged(float value) => Commit();
     partial void OnRememberRatePerFileChanged(bool value) => Commit();
     partial void OnResumeVideoPositionChanged(bool value) => Commit();

@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Media;
 using Prosmotr.Services.Abstractions;
 
@@ -20,7 +22,7 @@ public sealed class ImageCache : IImageCache
 
     private readonly IImageDecodingService _decoder;
     private readonly object _gate = new();
-    private readonly Dictionary<string, Task<ImageSource?>> _map = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CacheEntry> _map = new(StringComparer.OrdinalIgnoreCase);
     private readonly LinkedList<string> _lru = new();
 
     public ImageCache(IImageDecodingService decoder) => _decoder = decoder;
@@ -31,22 +33,25 @@ public sealed class ImageCache : IImageCache
         {
             if (_map.TryGetValue(path, out var existing))
             {
-                // Не отдаём мёртвые задачи — иначе вызывающий получит OperationCanceledException
-                // или AggregateException на старом токене, хотя новый токен ещё жив.
-                if (existing.IsCompleted && (existing.IsCanceled || existing.IsFaulted))
+                if (existing.Task.IsCompleted && (existing.Task.IsCanceled || existing.Task.IsFaulted))
                 {
-                    _map.Remove(path);
-                    _lru.Remove(path);
+                    RemoveEntry(path);
                 }
                 else
                 {
                     Touch(path);
-                    return existing;
+                    return existing.Task;
                 }
             }
 
-            var task = _decoder.LoadAsync(path, 0, ct);
-            _map[path] = task;
+            var cts = new CancellationTokenSource();
+            var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
+            var task = _decoder.LoadAsync(path, 0, linked.Token);
+
+            // После завершения задачи освобождаем связанный CTS.
+            _ = task.ContinueWith(_ => linked.Dispose(), TaskScheduler.Default);
+
+            _map[path] = new CacheEntry { Task = task, Cts = cts };
             _lru.AddFirst(path);
             Trim();
             return task;
@@ -58,10 +63,10 @@ public sealed class ImageCache : IImageCache
         image = null;
         lock (_gate)
         {
-            if (_map.TryGetValue(path, out var task) && task.IsCompletedSuccessfully && task.Result != null)
+            if (_map.TryGetValue(path, out var entry) && entry.Task.IsCompletedSuccessfully && entry.Task.Result != null)
             {
                 Touch(path);
-                image = task.Result;
+                image = entry.Task.Result;
                 return true;
             }
         }
@@ -88,8 +93,23 @@ public sealed class ImageCache : IImageCache
         while (_lru.Count > Capacity)
         {
             var oldest = _lru.Last!.Value;
-            _lru.RemoveLast();
-            _map.Remove(oldest);
+            RemoveEntry(oldest);
         }
+    }
+
+    private void RemoveEntry(string path)
+    {
+        _lru.Remove(path);
+        if (_map.Remove(path, out var entry))
+        {
+            entry.Cts.Cancel();
+            entry.Cts.Dispose();
+        }
+    }
+
+    private sealed class CacheEntry
+    {
+        public required Task<ImageSource?> Task;
+        public required CancellationTokenSource Cts;
     }
 }

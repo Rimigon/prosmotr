@@ -219,6 +219,8 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _appCts.Cancel();
+        // Принудительно освобождаем текущий ViewModel (и плеер/Media) до выгрузки DI-хоста.
+        try { (_host?.Services.GetService<MainViewModel>() as IDisposable)?.Dispose(); } catch { }
         // Гарантированно сбрасываем позиции видео на диск перед выгрузкой хоста.
         try { _host?.Services.GetService<IPlaybackPositionStore>()?.Flush(); } catch { }
         // Корректно освобождаем singletons (SettingsService, PlaybackPositionStore, LibVlcProvider).
