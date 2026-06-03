@@ -12,7 +12,7 @@ using Prosmotr.Services.Abstractions;
 namespace Prosmotr.ViewModels;
 
 /// <summary>Просмотр изображения: загрузка, зум/режимы (через View), поворот и опц. сохранение.</summary>
-public sealed partial class ImageViewerViewModel : ViewModelBase
+public sealed partial class ImageViewerViewModel : ViewModelBase, IDisposable
 {
     private readonly IImageCache _cache;
     private readonly IDialogService _dialog;
@@ -187,6 +187,13 @@ public sealed partial class ImageViewerViewModel : ViewModelBase
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
         return ext is ".jpg" or ".jpeg" or ".jpe" or ".jfif" or ".png" or ".bmp" or ".tif" or ".tiff";
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = null;
     }
 
     private static BitmapEncoder CreateEncoder(string path) =>

@@ -33,26 +33,24 @@ public static class ExplorerSortReader
             var type = Type.GetTypeFromCLSID(CLSID_ShellWindows);
             if (type == null) return false;
             shellWindows = Activator.CreateInstance(type);
-            if (shellWindows == null) return false;
+            if (shellWindows is not IShellWindows windows) return false;
 
-            dynamic windows = shellWindows;
-            int count = windows.Count;
+            if (windows.get_Count(out int count) != 0) return false;
             string target = NormalizePath(folderPath);
 
             for (int i = 0; i < count; i++)
             {
                 object? win = null;
-                try { win = windows.Item(i); }
+                try { windows.Item(i, out win); }
                 catch { continue; }
                 if (win == null) continue;
 
                 try
                 {
                     string? winPath = null;
-                    try { winPath = ((dynamic)win).Document?.Folder?.Self?.Path as string; } catch { }
-                    if (string.IsNullOrEmpty(winPath))
+                    if (win is IWebBrowser wb)
                     {
-                        try { winPath = UrlToPath(((dynamic)win).LocationURL as string); } catch { }
+                        try { winPath = UrlToPath(wb.LocationURL); } catch { }
                     }
 
                     if (!string.IsNullOrEmpty(winPath) && PathEquals(winPath, target))
@@ -231,5 +229,38 @@ public static class ExplorerSortReader
         void GetParent();      // 2
         [PreserveSig] int GetDisplayName(uint sigdnName, out IntPtr ppszName);  // 3
         // GetAttributes, Compare не нужны
+    }
+
+    // --- Строгие COM-интерфейсы вместо dynamic (P0.4) ---
+
+    [ComImport, Guid("85CB6900-4D95-11CF-960C-0080C7F4EE85"),
+     InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellWindows
+    {
+        // IDispatch methods (IUnknown + 4 slots)
+        void GetTypeInfoCount(out uint pctinfo);
+        void GetTypeInfo(uint iTInfo, uint lcid, out IntPtr ppTInfo);
+        void GetIDsOfNames(ref Guid riid, [MarshalAs(UnmanagedType.LPArray)] string[] rgszNames,
+            int cNames, uint lcid, [MarshalAs(UnmanagedType.LPArray)] int[] rgDispId);
+        void Invoke(int dispIdMember, ref Guid riid, uint lcid, uint dwFlags,
+            [In, Out] ref System.Runtime.InteropServices.ComTypes.DISPPARAMS pDispParams,
+            [Out, MarshalAs(UnmanagedType.Struct)] out object pVarResult,
+            [In, Out] ref System.Runtime.InteropServices.ComTypes.EXCEPINFO pExcepInfo,
+            [MarshalAs(UnmanagedType.LPArray)] IntPtr[] pArgErr);
+
+        // IShellWindows
+        [PreserveSig]
+        int get_Count(out int count);
+        [PreserveSig]
+        int Item([MarshalAs(UnmanagedType.Struct)] object index,
+                 [MarshalAs(UnmanagedType.IUnknown)] out object folder);
+    }
+
+    [ComImport, Guid("EAB22AC1-30C1-11CF-A7EB-0000C05BAE0B"),
+     InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+    private interface IWebBrowser
+    {
+        [DispId(0xd3)]
+        string LocationURL { [return: MarshalAs(UnmanagedType.BStr)] get; }
     }
 }

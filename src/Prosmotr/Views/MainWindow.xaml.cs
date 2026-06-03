@@ -155,7 +155,12 @@ public partial class MainWindow : FluentWindow
         //    (иначе Delete/громкость/перемотка не срабатывают, пока не кликнешь по видео).
         PreviewKeyDown += OnPreviewKeyDown;
         ComponentDispatcher.ThreadPreprocessMessage += OnThreadPreprocessMessage;
-        Closed += (_, _) => ComponentDispatcher.ThreadPreprocessMessage -= OnThreadPreprocessMessage;
+        Closed += (_, _) =>
+        {
+            _chromeHideTimer.Tick -= OnChromeHideTick;
+            _chromeHideTimer.Stop();
+            ComponentDispatcher.ThreadPreprocessMessage -= OnThreadPreprocessMessage;
+        };
         DragOver += OnDragOver;
         Drop += OnDrop;
     }

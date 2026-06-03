@@ -392,7 +392,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// реальный порядок открытого окна Проводника → глобальная настройка.
     /// Возвращает либо поле сортировки (sort), либо готовый порядок путей (order).
     /// </summary>
-    private async Task<(SortSpec sort, IReadOnlyList<string>? order)> ResolveOrderingAsync(string folder)
+    private Task<(SortSpec sort, IReadOnlyList<string>? order)> ResolveOrderingAsync(string folder)
     {
         var key = string.IsNullOrEmpty(folder) ? null : folder.ToLowerInvariant().TrimEnd('\\', '/');
         _currentFolderKey = key;
@@ -402,28 +402,23 @@ public sealed partial class MainViewModel : ViewModelBase
             TryParseSpec(manual, out var manualSpec))
         {
             AppLog.Write($"Сортировка (выбор пользователя): {manualSpec.Field}, убыв={manualSpec.Descending}");
-            return (manualSpec, null);
+            return Task.FromResult<(SortSpec, IReadOnlyList<string>?)>((manualSpec, null));
         }
 
         // 2) Реальный порядок открытого окна Проводника — повторяет ЛЮБУЮ сортировку Windows.
+        // Shell COM требует STA; операция быстрая — вызываем синхронно из UI-потока.
         if (_settings.Settings.MatchExplorerSort && !string.IsNullOrEmpty(folder))
         {
-            var paths = await Task.Run(() =>
+            if (ExplorerSortReader.TryGetOrderedPaths(folder, out var p) && p.Count > 0)
             {
-                if (ExplorerSortReader.TryGetOrderedPaths(folder, out var p) && p.Count > 0)
-                    return p;
-                return null;
-            });
-            if (paths != null)
-            {
-                AppLog.Write($"Порядок из Проводника: {paths.Count} файлов");
-                return (default, paths);
+                AppLog.Write($"Порядок из Проводника: {p.Count} файлов");
+                return Task.FromResult<(SortSpec, IReadOnlyList<string>?)>((default, p));
             }
         }
 
         // 3) Глобальная настройка по умолчанию.
         AppLog.Write($"Сортировка из настроек: {_settings.Settings.SortBy}, убыв={_settings.Settings.SortDescending}");
-        return (new SortSpec(_settings.Settings.SortBy, _settings.Settings.SortDescending), null);
+        return Task.FromResult<(SortSpec, IReadOnlyList<string>?)>((new SortSpec(_settings.Settings.SortBy, _settings.Settings.SortDescending), null));
     }
 
     private void ReflectSort(SortSpec sort)

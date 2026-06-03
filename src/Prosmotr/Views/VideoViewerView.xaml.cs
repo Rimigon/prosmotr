@@ -23,12 +23,6 @@ public partial class VideoViewerView : UserControl
     private long _audioMenuClosedAt;
     private long _subtitleMenuClosedAt;
     private long _speedMenuClosedAt;
-    private DependencyPropertyDescriptor? _audioMenuOpenDpd;
-    private DependencyPropertyDescriptor? _subtitleMenuOpenDpd;
-    private DependencyPropertyDescriptor? _speedMenuOpenDpd;
-    private EventHandler? _audioMenuOpenHandler;
-    private EventHandler? _subtitleMenuOpenHandler;
-    private EventHandler? _speedMenuOpenHandler;
     private const long MenuToggleThresholdMs = 350;
 
     public VideoViewerView()
@@ -36,7 +30,7 @@ public partial class VideoViewerView : UserControl
         InitializeComponent();
 
         _hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-        _hideTimer.Tick += (_, _) => HideControlsIfPlaying();
+        _hideTimer.Tick += OnHideTimerTick;
 
         _clickTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
         _clickTimer.Tick += OnSingleClickElapsed;
@@ -44,11 +38,7 @@ public partial class VideoViewerView : UserControl
         // Показ панели на паузе — с задержкой, чтобы при быстром переходе видео→видео
         // (кратковременная остановка плеера) панель не мелькала.
         _pauseShowTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(280) };
-        _pauseShowTimer.Tick += (_, _) =>
-        {
-            _pauseShowTimer.Stop();
-            if (_vm is { IsPlaying: false, IsEnded: false }) ShowControls();
-        };
+        _pauseShowTimer.Tick += OnPauseShowTimerTick;
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -102,8 +92,20 @@ public partial class VideoViewerView : UserControl
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _hideTimer.Stop();
+        _hideTimer.Tick -= OnHideTimerTick;
         _clickTimer.Stop();
+        _clickTimer.Tick -= OnSingleClickElapsed;
         _pauseShowTimer.Stop();
+        _pauseShowTimer.Tick -= OnPauseShowTimerTick;
+
+        // Закрываем и освобождаем меню, чтобы не держать делегаты и COM-ссылки.
+        _speedMenu?.SetValue(ContextMenu.IsOpenProperty, false);
+        _audioMenu?.SetValue(ContextMenu.IsOpenProperty, false);
+        _subtitleMenu?.SetValue(ContextMenu.IsOpenProperty, false);
+        _speedMenu = null;
+        _audioMenu = null;
+        _subtitleMenu = null;
+
         WeakReferenceMessenger.Default.Unregister<ToggleChromeMessage>(this);
         DetachMainVm();
         Detach();
@@ -181,6 +183,14 @@ public partial class VideoViewerView : UserControl
         _vm?.TogglePlayCommand.Execute(null);
     }
 
+    private void OnHideTimerTick(object? sender, EventArgs e) => HideControlsIfPlaying();
+
+    private void OnPauseShowTimerTick(object? sender, EventArgs e)
+    {
+        _pauseShowTimer.Stop();
+        if (_vm is { IsPlaying: false, IsEnded: false }) ShowControls();
+    }
+
     private void OnSpeedButtonClick(object sender, RoutedEventArgs e)
     {
         if (_speedMenu?.IsOpen == true)
@@ -192,23 +202,12 @@ public partial class VideoViewerView : UserControl
             return;
         if (_vm == null) return;
 
-        if (_speedMenuOpenDpd != null && _speedMenu != null && _speedMenuOpenHandler != null)
-            _speedMenuOpenDpd.RemoveValueChanged(_speedMenu, _speedMenuOpenHandler);
-
         _speedMenu = new ContextMenu
         {
             PlacementTarget = SpeedButton,
             Placement = System.Windows.Controls.Primitives.PlacementMode.Top
         };
         AddSpeedItems(_speedMenu.Items);
-
-        _speedMenuOpenDpd = DependencyPropertyDescriptor.FromProperty(ContextMenu.IsOpenProperty, typeof(ContextMenu));
-        _speedMenuOpenHandler = (_, _) =>
-        {
-            if (_speedMenu?.IsOpen == false)
-                _speedMenuClosedAt = Environment.TickCount64;
-        };
-        _speedMenuOpenDpd.AddValueChanged(_speedMenu, _speedMenuOpenHandler);
 
         _speedMenu.Closed += (_, _) => _speedMenuClosedAt = Environment.TickCount64;
         _speedMenu.IsOpen = true;
@@ -225,23 +224,12 @@ public partial class VideoViewerView : UserControl
             return;
         if (_vm == null) return;
 
-        if (_audioMenuOpenDpd != null && _audioMenu != null && _audioMenuOpenHandler != null)
-            _audioMenuOpenDpd.RemoveValueChanged(_audioMenu, _audioMenuOpenHandler);
-
         _audioMenu = new ContextMenu
         {
             PlacementTarget = AudioButton,
             Placement = System.Windows.Controls.Primitives.PlacementMode.Top
         };
         AddAudioItems(_audioMenu.Items);
-
-        _audioMenuOpenDpd = DependencyPropertyDescriptor.FromProperty(ContextMenu.IsOpenProperty, typeof(ContextMenu));
-        _audioMenuOpenHandler = (_, _) =>
-        {
-            if (_audioMenu?.IsOpen == false)
-                _audioMenuClosedAt = Environment.TickCount64;
-        };
-        _audioMenuOpenDpd.AddValueChanged(_audioMenu, _audioMenuOpenHandler);
 
         _audioMenu.Closed += (_, _) => _audioMenuClosedAt = Environment.TickCount64;
         _audioMenu.IsOpen = true;
@@ -258,23 +246,12 @@ public partial class VideoViewerView : UserControl
             return;
         if (_vm == null) return;
 
-        if (_subtitleMenuOpenDpd != null && _subtitleMenu != null && _subtitleMenuOpenHandler != null)
-            _subtitleMenuOpenDpd.RemoveValueChanged(_subtitleMenu, _subtitleMenuOpenHandler);
-
         _subtitleMenu = new ContextMenu
         {
             PlacementTarget = SubtitleButton,
             Placement = System.Windows.Controls.Primitives.PlacementMode.Top
         };
         AddSubtitleItems(_subtitleMenu.Items);
-
-        _subtitleMenuOpenDpd = DependencyPropertyDescriptor.FromProperty(ContextMenu.IsOpenProperty, typeof(ContextMenu));
-        _subtitleMenuOpenHandler = (_, _) =>
-        {
-            if (_subtitleMenu?.IsOpen == false)
-                _subtitleMenuClosedAt = Environment.TickCount64;
-        };
-        _subtitleMenuOpenDpd.AddValueChanged(_subtitleMenu, _subtitleMenuOpenHandler);
 
         _subtitleMenu.Closed += (_, _) => _subtitleMenuClosedAt = Environment.TickCount64;
         _subtitleMenu.IsOpen = true;

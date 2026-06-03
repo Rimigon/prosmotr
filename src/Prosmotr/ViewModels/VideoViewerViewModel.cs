@@ -95,7 +95,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         p.LengthChanged += OnLengthChanged;
 
         _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _saveTimer.Tick += (_, _) => SavePosition();
+        _saveTimer.Tick += OnSaveTimerTick;
     }
 
     /// <summary>Запускается из View после загрузки VideoView (когда готов нативный HWND).</summary>
@@ -299,15 +299,17 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         if (_settings.Settings.RememberRatePerFile)
             SavePosition();
 
-        if (flashBadge) FlashRateBadge();
+        if (flashBadge) _ = FlashRateBadgeAsync(); // fire-and-forget
     }
 
-    private async void FlashRateBadge()
+    private async Task FlashRateBadgeAsync()
     {
         ShowRateBadge = true;
-        try { await Task.Delay(1200); } catch { }
+        try { await Task.Delay(1200); } catch { /* Ignore */ }
         ShowRateBadge = false;
     }
+
+    private void OnSaveTimerTick(object? sender, EventArgs e) => SavePosition();
 
     // --- Реакция на изменение наблюдаемых свойств ---
 
@@ -384,6 +386,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         if (_disposed) return;
         _disposed = true;
 
+        _saveTimer.Tick -= OnSaveTimerTick;
         _saveTimer.Stop();
         SavePosition();
 
