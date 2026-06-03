@@ -28,6 +28,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private readonly IPlaybackPositionStore _positions;
     private readonly INotificationService _notify;
 
+    public INotificationService NotificationService => _notify;
+
     private readonly DispatcherTimer _slideshowTimer;
     private readonly Func<MediaItem, ImageViewerViewModel> _imageVmFactory;
     private readonly Func<MediaItem, VideoViewerViewModel> _videoVmFactory;

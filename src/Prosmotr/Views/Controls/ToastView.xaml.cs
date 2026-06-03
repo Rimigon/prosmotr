@@ -3,8 +3,8 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
-using Microsoft.Extensions.DependencyInjection;
 using Prosmotr.Services.Abstractions;
+using Prosmotr.ViewModels;
 using Wpf.Ui.Controls;
 
 namespace Prosmotr.Views.Controls;
@@ -35,8 +35,12 @@ public partial class ToastView : UserControl
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (_service != null) return;
-        _service = (Application.Current as App)?.Services.GetService<INotificationService>();
-        if (_service != null) _service.Requested += OnRequested;
+        var window = Window.GetWindow(this);
+        if (window?.DataContext is MainViewModel vm)
+        {
+            _service = vm.NotificationService;
+            if (_service != null) _service.Requested += OnRequested;
+        }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)

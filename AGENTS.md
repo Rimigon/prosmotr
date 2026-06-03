@@ -116,7 +116,13 @@ Single-file ломает загрузку нативных плагинов LibV
   и `Func<MediaItem, VideoViewerViewModel>` из контейнера (зарегистрированы в `App.ConfigureServices`).
 - **Уведомления.** `NotificationService` лишь поднимает событие `Requested` в UI-потоке; рисуют тост
   сами View — контрол `ToastView` (в главном окне и **внутри оверлея видео**, чтобы тост был виден
-  поверх airspace VLC). `ToastView` достаёт `INotificationService` из DI приложения (`App.Services`).
+- **Уведомления.** `NotificationService` лишь поднимает событие `Requested` в UI-потоке; рисуют тост
+  сами View — контрол `ToastView` (в главном окне и **внутри оверлея видео**, чтобы тост был виден
+  поверх airspace VLC). `ToastView` получает `INotificationService` через публичное свойство
+  `MainViewModel.NotificationService` (окно передаёт DataContext, `ToastView` берёт сервис из него).
+  **Не** обращайся к `Application.Current as App` — Service Locator устранён (P3).
+  **Очередь:** `ToastView` держит `Queue<NotificationRequest>` (max 3). Новое уведомление не
+  прерывает текущее мгновенно — встаёт в очередь и показывается после скрытия предыдущего.
 
 ### Карта каталогов
 
@@ -137,7 +143,8 @@ src/Prosmotr/
   Converters/                — конвертеры XAML (BoolToVis, InverseBoolToVis, …)
   Infrastructure/            — AppLog, SupportedFormats, NativeMethods (Корзина),
                                RecycleBinRestore (отмена удаления), ShellThumbnail,
-                               ExplorerSortReader, NaturalStringComparer
+                               ExplorerSortReader, NaturalStringComparer,
+                               FullScreenHelper (Win32 borderless fullscreen)
   Resources/                 — иконка app.ico, темы (AppResources.xaml)
 app/                         — ⚠️ опубликованная копия (в .gitignore), на неё ведёт ярлык
 ```
@@ -456,6 +463,41 @@ Magick.NET (конвертация в **BMP** в памяти — раньше �
 - **`AutomationProperties.Name` на кнопках видео.** Все интерактивные кнопки `VideoViewerView`
   (Play/Pause, Mute, Audio, Subtitles, Snapshot, Speed, FullScreen, боковые стрелки Prev/Next)
   снабжены `AutomationProperties.Name` для корректной работы экранного диктора и accessibility.
+- **Утечка `EmptyStateViewModel` (P0.1).** В `MainViewModel.UpdateCurrentContent` старый контент
+  освобождался только при явном приведении к `ImageViewerViewModel`/`VideoViewerViewModel`.
+  `EmptyStateViewModel` тоже подписан на события (`RecentFilesService.Changed`) и содержит
+  `DispatcherTimer`. При смене `CurrentContent` проверяем `old is IDisposable`, а не
+  конкретные типы — тогда любой VM со своими подписками корректно отписывается.
+- **Залипание панорамы в `ZoomBorder` (P0.2).** `OnLostMouseCapture` обязан сбрасывать
+  `_dragging = false` и `Cursor = Cursors.Arrow`. Если во время перетаскивания курсор уходит
+  за край окна и отпускается там, `OnMouseLeftButtonUp` не сработает, а `OnLostMouseCapture` —
+  да. Без сброса флага изображение «прилипает» к курсору при возвращении мыши в окно.
+- **Батчевание миниатюр (P2.1).** `Dispatcher.InvokeAsync` на каждый готовый thumbnail при
+  открытии папки из 5000 файлов фризит UI: потоки декодирования слишком часто переключаются
+  на UI-поток. Заменено на `ConcurrentQueue` + `DispatcherTimer` с интервалом 50 мс:
+  поток складывает результаты, UI сбрасывает пачкой. Также `await Task.Yield()` заменён
+  на `await Dispatcher.Yield(DispatcherPriority.Render)` — гарантирует отрисовку кадра
+  между порциями.
+- **Cleanup transient VM при shutdown (P1.1).** При закрытии окна на видео `MainViewModel.Dispose()`
+  должен вызвать `(CurrentContent as IDisposable)?.Dispose()` **до** `_host.Dispose()`.
+  Иначе LibVLC выгружается раньше, чем освобождаются `MediaPlayer`/`Media`, что приводит к
+  AV или зависанию. `App.OnExit` осуществляет это явно перед выгрузкой хоста.
+- **`SetWindowLongPtr` для x64 (P3.2).** На x64 `SetWindowLong`/`GetWindowLong` возвращают 32-битное
+  значение (`int`), что некорректно для `GWL_STYLE` на 64-битной Windows. Используем обёртки
+  `SetWindowLongPtr`/`GetWindowLongPtr` с entry-point-переключением (`IntPtr.Size`) — безопасно
+  для x64-only проекта.
+- **Рефакторинг fullscreen в `Infrastructure/FullScreenHelper` (P3.3).** Вся Win32-логика
+  полноэкранного режима (`MonitorFromWindow`, `DwmSetWindowAttribute`, подкласс окна и т.д.)
+  изолирована в статическом классе `FullScreenHelper`. `MainWindow` вызывает
+  `FullScreenHelper.Enter(this)` / `Exit(this, state)` — code-behind окна уменьшился на ~150 строк.
+- **Фабрика `MainWindow` в DI (P3.4).** `MainWindow` зарегистрирован как `transient` с фабрикой
+  `services.AddTransient(sp => new MainWindow(...))` вместо `AddSingleton<MainWindow>()`.
+  Это позволяет контейнеру создавать новые окна при необходимости и держать конструктор
+  публичным без неявного вызова ActivatorUtilities.
+- **Убран Service Locator из `ToastView` (P3.1).** `ToastView` больше не обращается к
+  `Application.Current as App`. Вместо этого он получает `INotificationService` через
+  публичное свойство `MainViewModel.NotificationService`, которое доступно через
+  `Window.GetWindow(this)?.DataContext`.
 
 ---
 

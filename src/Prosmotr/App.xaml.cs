@@ -201,8 +201,10 @@ public partial class App : Application
         services.AddSingleton<MainViewModel>();
         services.AddTransient<SettingsViewModel>();
 
-        // Окна
-        services.AddSingleton<MainWindow>();
+        // Окна (transient — контейнер может создавать новое, если потребуется)
+        services.AddTransient(sp => new MainWindow(
+            sp.GetRequiredService<MainViewModel>(),
+            sp.GetRequiredService<IServiceProvider>()));
         services.AddTransient<SettingsWindow>();
         services.AddTransient<FilePropertiesWindow>();
     }
