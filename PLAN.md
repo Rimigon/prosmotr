@@ -95,7 +95,7 @@ public void Dispose() // добавить IDisposable
 
 ## P1 — Высокие (безопасность, архитектура, надёжность)
 
-### P1.1 Атомарное сохранение поворота изображения
+### ~~P1.1~~ Атомарное сохранение поворота изображения ✓
 **Проблема:** `File.Copy(tmp, original, true)` + `File.Delete(tmp)` не атомарны. Сбой между операциями = потеря оригинала.
 **Где:** `ViewModels/ImageViewerViewModel.cs`, `SaveRotationAsync`
 **Действие:**
@@ -107,7 +107,7 @@ File.Move(tmp, Item.FullPath, overwrite: true);
 
 ---
 
-### P1.2 Убрать глотание `OutOfMemoryException` в `ImageDecodingService`
+### ~~P1.2~~ Убрать глотание `OutOfMemoryException` в `ImageDecodingService` ✓
 **Проблема:** `catch { return null; }` подавляет OOM, скрывая критическую нехватку памяти.
 **Где:** `Services/ImageDecodingService.cs`
 **Действие:**
@@ -120,7 +120,7 @@ catch { return null; }
 
 ---
 
-### P1.3 `CancellationToken` для `OpenPathAsync` / `BuildFromFolderAsync`
+### ~~P1.3~~ `CancellationToken` для `OpenPathAsync` / `BuildFromFolderAsync` ✓
 **Проблема:** Если пользователь открыл огромную папку и тут же другую — первая операция продолжает сканировать диск, блокируя IO.
 **Где:** `MainViewModel.OpenPathAsync`, `Services/MediaLibraryService.cs`
 **Действие:**
@@ -132,29 +132,28 @@ catch { return null; }
 
 ---
 
-### P1.4 Добавить `volatile` / `CancellationToken` для `_shuttingDown`
+### ~~P1.4~~ Добавить `volatile` / `CancellationToken` для `_shuttingDown` ✓
 **Проблема:** Чтение `_shuttingDown` из фонового потока pipe-сервера без барьера памяти.
 **Где:** `App.xaml.cs`
 **Действие:**
 ```csharp
-private volatile bool _shuttingDown;
+private readonly CancellationTokenSource _appCts = new();
 ```
-Или заменить на `CancellationTokenSource _appCts`, передавая `Token` в `StartPipeServer`.
+`Token` передаётся в `WaitForConnectionAsync`, `IsCancellationRequested` — в цикл. При выходе — `_appCts.Cancel()`.
 **Критерий:** При быстром `App.Shutdown()` pipe-сервер завершает цикл без лишней итерации.
 
 ---
 
-### P1.5 Устранение зомби-STA-потоков в `FileDeletionService`
+### ~~P1.5~~ Устранение зомби-STA-потоков в `FileDeletionService` ✓
 **Проблема:** При таймауте `IFileOperation` STA-поток остаётся висеть. При массовом удалении растёт число потоков.
 **Где:** `Services/FileDeletionService.cs`
 **Действие:**
-1. Ограничить число попыток/таймаутов: если IFileOperation зависает 2 раза подряд — fallback на `SHFileOperation` или `File.Delete` + `FileSystem.DeleteFile` (Microsoft.VisualBasic).
-2. Либо добавить `thread.Join(TimeSpan.FromSeconds(15))` после `Task.WhenAny`, и если не завершился — `thread.Interrupt()` (не `Abort` в .NET 8).
+Добавить `thread.Join(TimeSpan.FromSeconds(15))` после `Task.WhenAny` (таймаут); если не завершился — `thread.Interrupt()`.
 **Критерий:** После 10 удалений с имитацией зависания `IFileOperation` (mock) активных потоков не более 2.
 
 ---
 
-### P1.6 DI-фабрики для дочерних VM вместо `new`
+### ~~P1.6~~ DI-фабрики для дочерних VM вместо `new` ✓
 **Проблема:** `MainViewModel` создаёт `ImageViewerViewModel` и `VideoViewerViewModel` напрямую, нарушая IoC.
 **Где:** `MainViewModel.UpdateCurrentContent`
 **Действие:**
@@ -170,13 +169,13 @@ services.AddTransient<Func<MediaItem, VideoViewerViewModel>>(sp =>
 
 ---
 
-### P1.7 Изолировать UI-логику из `MediaItem`
+### ~~P1.7~~ Изолировать UI-логику из `MediaItem` ✓
 **Проблема:** `MediaItem.FileSizeText` — форматирование в доменной модели.
 **Где:** `Models/MediaItem.cs`
 **Действие:**
 1. Удалить свойство `FileSizeText` из `MediaItem`.
 2. Создать `Converters/FileSizeConverter.cs` (`IValueConverter`), принимающий `long`.
-3. Привязать `StatusText` через MultiBinding или формировать в `MainViewModel.UpdateStatus`.
+3. Формировать `StatusText` в `MainViewModel.UpdateStatus` через `FileSizeConverter.Format`.
 **Критерий:** `MediaItem` содержит только `long FileSizeBytes`.
 
 ---
@@ -311,10 +310,13 @@ public record DeleteResult(bool Success, string? ErrorMessage);
 ### ✅ Выполнено
 - **Фаза 0 (P0):** Все критические пункты — утечки памяти, стабильность, COM (`dynamic` → strict interfaces), STA-поток, `async void` → `Task`.
 
+### ✅ Выполнено
+- **Фаза 0 (P0):** Все критические пункты — утечки памяти, стабильность, COM, STA-поток, `async void` → `Task`.
+- **Фаза 1 (P1):** Все высокие пункты — безопасность, архитектура, DI, CancellationToken, надёжность.
+
 ### 📋 Оставшиеся задачи
-1. **Фаза 1 (P1 — высокие):** P1.1, P1.2, P1.3, P1.4, P1.5, P1.6, P1.7 — безопасность, архитектура, DI, надёжность.
-2. **Фаза 2 (P2 — средние):** P2.1, P2.2, P2.3, P2.4, P2.5, P2.6, P2.7, P2.8 — производительность, UX, код-стайл.
-3. **Фаза 3 (P3 — низкие):** P3.1, P3.2, P3.3, P3.4 — рефакторинг, техдолг.
+1. **Фаза 2 (P2 — средние):** P2.1, P2.2, P2.3, P2.4, P2.5, P2.6, P2.7, P2.8 — производительность, UX, код-стайл.
+2. **Фаза 3 (P3 — низкие):** P3.1, P3.2, P3.3, P3.4 — рефакторинг, техдолг.
 
 > **Примечание по публикации:** после каждой итерации обязательно `dotnet publish src/Prosmotr/Prosmotr.csproj -c Release -o app` (см. `AGENTS.md` §3.1). Перед публикацией закрывать запущенные экземпляры.
 

@@ -21,6 +21,7 @@ public sealed class ImageDecodingService : IImageDecodingService
                     : LoadNative(path, decodePixelWidth);
             }
             catch (OperationCanceledException) { throw; }
+            catch (OutOfMemoryException) { throw; }
             catch { return null; }
         }, ct);
 

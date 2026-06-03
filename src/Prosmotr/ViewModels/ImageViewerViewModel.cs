@@ -165,8 +165,7 @@ public sealed partial class ImageViewerViewModel : ViewModelBase, IDisposable
             using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write))
                 encoder.Save(fs);
 
-            File.Copy(tmp, Item.FullPath, true);
-            File.Delete(tmp);
+            File.Move(tmp, Item.FullPath, overwrite: true);
 
             // Сброс — теперь файл физически повёрнут.
             Rotation = 0;

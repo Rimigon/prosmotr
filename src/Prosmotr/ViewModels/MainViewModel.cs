@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Prosmotr.Converters;
 using Prosmotr.Infrastructure;
 using Prosmotr.Models;
 using Prosmotr.Services;
@@ -28,6 +29,9 @@ public sealed partial class MainViewModel : ViewModelBase
     private readonly INotificationService _notify;
 
     private readonly DispatcherTimer _slideshowTimer;
+    private CancellationTokenSource? _openCts;
+    private readonly Func<MediaItem, ImageViewerViewModel> _imageVmFactory;
+    private readonly Func<MediaItem, VideoViewerViewModel> _videoVmFactory;
 
     // Последнее удаление в корзину — для отмены (восстановления).
     private MediaItem? _lastDeletedItem;
@@ -93,7 +97,9 @@ public sealed partial class MainViewModel : ViewModelBase
         IThumbnailService thumbnails,
         LibVlcProvider vlc,
         IPlaybackPositionStore positions,
-        INotificationService notify)
+        INotificationService notify,
+        Func<MediaItem, ImageViewerViewModel> imageVmFactory,
+        Func<MediaItem, VideoViewerViewModel> videoVmFactory)
     {
         _library = library;
         _nav = nav;
@@ -107,6 +113,8 @@ public sealed partial class MainViewModel : ViewModelBase
         _vlc = vlc;
         _positions = positions;
         _notify = notify;
+        _imageVmFactory = imageVmFactory;
+        _videoVmFactory = videoVmFactory;
 
         ThumbnailStrip = new ThumbnailStripViewModel(thumbnails);
         ThumbnailStrip.SelectionRequested += (_, item) => _nav.MoveTo(item);
@@ -169,13 +177,17 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Открыть путь (файл или папку), построить галерею и перейти к нему.</summary>
     public async Task OpenPathAsync(string path)
     {
+        _openCts?.Cancel();
+        _openCts = new CancellationTokenSource();
+        var ct = _openCts.Token;
+
         try
         {
             MediaLibraryResult result;
             if (Directory.Exists(path))
             {
                 var (sort, order) = await ResolveOrderingAsync(path);
-                result = await _library.BuildFromFolderAsync(path, sort, order);
+                result = await _library.BuildFromFolderAsync(path, sort, order, ct);
                 _recent.Add(path, isFolder: true);
                 if (order == null) ReflectSort(sort);
             }
@@ -183,7 +195,7 @@ public sealed partial class MainViewModel : ViewModelBase
             {
                 var folder = Path.GetDirectoryName(path) ?? string.Empty;
                 var (sort, order) = await ResolveOrderingAsync(folder);
-                result = await _library.BuildFromFileAsync(path, sort, order);
+                result = await _library.BuildFromFileAsync(path, sort, order, ct);
                 _recent.Add(path, isFolder: false);
                 _settings.Settings.LastFilePath = path;
                 _settings.SaveDebounced();
@@ -518,14 +530,14 @@ public sealed partial class MainViewModel : ViewModelBase
         }
         else if (cur.IsImage)
         {
-            var vm = new ImageViewerViewModel(cur, _imageCache, _dialog, _notify);
+            var vm = _imageVmFactory(cur);
             next = vm;
             _ = vm.LoadAsync();
             PreloadNeighbors();
         }
         else // видео
         {
-            var videoVm = new VideoViewerViewModel(cur, _vlc, _settings, _positions, _dialog, _notify);
+            var videoVm = _videoVmFactory(cur);
             videoVm.ShowFileNavigation = _nav.Items.Count > 1;
             next = videoVm;
         }
@@ -575,7 +587,7 @@ public sealed partial class MainViewModel : ViewModelBase
         else
         {
             CurrentFileName = cur.FileName;
-            StatusText = $"{cur.FileSizeText} · {cur.FileName} — {_nav.CurrentIndex + 1} из {_nav.Items.Count}";
+            StatusText = $"{FileSizeConverter.Format(cur.FileSizeBytes)} · {cur.FileName} — {_nav.CurrentIndex + 1} из {_nav.Items.Count}";
         }
     }
 

@@ -107,6 +107,9 @@ Single-file ломает загрузку нативных плагинов LibV
   `Services/Abstractions/`: библиотека медиа, навигация, удаление, настройки, тема, кэш изображений,
   декодирование, миниатюры, позиции видео, ассоциации файлов, shell-операции, провайдер LibVLC,
   **уведомления** (`INotificationService`/`NotificationService`).
+- **DI-фабрики для дочерних VM.** `MainViewModel` не создаёт `ImageViewerViewModel` и
+  `VideoViewerViewModel` напрямую через `new`, а получает `Func<MediaItem, ImageViewerViewModel>`
+  и `Func<MediaItem, VideoViewerViewModel>` из контейнера (зарегистрированы в `App.ConfigureServices`).
 - **Уведомления.** `NotificationService` лишь поднимает событие `Requested` в UI-потоке; рисуют тост
   сами View — контрол `ToastView` (в главном окне и **внутри оверлея видео**, чтобы тост был виден
   поверх airspace VLC). `ToastView` достаёт `INotificationService` из DI приложения (`App.Services`).
@@ -350,6 +353,28 @@ Magick.NET (конвертация в PNG в памяти), остальное �
   `Dispatcher.BeginInvoke(UpdateLayout, DispatcherPriority.Render)`. Это нужно, чтобы
   `ForegroundWindow` LibVLCSharp.WPF получил событие `LayoutUpdated` и пересчитал позицию
   overlay-окна — иначе панель/инфо-плашка иногда оказываются смещены или не видны.
+
+### 5.13. Нюансы Фазы 1 (P1) — безопасность, архитектура, DI
+
+- **Атомарное сохранение поворота.** `ImageViewerViewModel.SaveRotationAsync` пишет во временный
+  файл, а затем вызывает `File.Move(tmp, original, overwrite: true)` — на одном томе это атомарное
+  переименование. Не используй `File.Copy` + `File.Delete` — сбой между ними испортит файл.
+- `ImageDecodingService` **не глотает `OutOfMemoryException`** — она прокидывается выше,
+  чтобы приложение корректно упало с логом в `startup.log`. Общий `catch { return null; }`
+  оставлен только для остальных исключений.
+- **Отмена предыдущего открытия папки.** `MainViewModel.OpenPathAsync` держит
+  `CancellationTokenSource _openCts`. При повторном вызове предыдущий `ct` отменяется,
+  и `MediaLibraryService.ScanAsync` прерывает перечисление файлов через
+  `ct.ThrowIfCancellationRequested()`. Это предотвращает зависшее IO при быстрой смене папок.
+- **Shutdown через `CancellationTokenSource`.** В `App.xaml.cs` `_shuttingDown : bool` заменён на
+  `CancellationTokenSource _appCts`. Его токен передаётся в `NamedPipeServerStream.WaitForConnectionAsync`,
+  а `IsCancellationRequested` — проверка цикла pipe-сервера. При выходе вызывается `_appCts.Cancel()`.
+- **Зомби-STA-потоки удаления.** `FileDeletionService` после таймаута `IFileOperation`
+  (10 с) делает `thread.Join(TimeSpan.FromSeconds(15))`; если поток не завершился —
+  `thread.Interrupt()`. Это ограничивает число висящих STA-потоков при массовом удалении.
+- **`MediaItem` не содержит UI-логики.** Свойство `FileSizeText` удалено из модели;
+  форматирование `long` → человекочитаемый размер вынесено в `Converters/FileSizeConverter`.
+  `MainViewModel.UpdateStatus` использует `FileSizeConverter.Format(...)`.
 
 ---
 

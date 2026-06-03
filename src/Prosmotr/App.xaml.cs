@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Prosmotr.Models;
 using Prosmotr.Services;
 using Prosmotr.Services.Abstractions;
 using Prosmotr.ViewModels;
@@ -20,7 +21,7 @@ public partial class App : Application
 
     private IHost? _host;
     private Mutex? _mutex;
-    private bool _shuttingDown;
+    private readonly CancellationTokenSource _appCts = new();
 
     public IServiceProvider Services => _host!.Services;
 
@@ -100,18 +101,19 @@ public partial class App : Application
     {
         Task.Run(async () =>
         {
-            while (!_shuttingDown)
+            while (!_appCts.IsCancellationRequested)
             {
                 try
                 {
                     using var server = new NamedPipeServerStream(
                         PipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-                    await server.WaitForConnectionAsync().ConfigureAwait(false);
+                    await server.WaitForConnectionAsync(_appCts.Token).ConfigureAwait(false);
                     using var reader = new StreamReader(server);
                     var path = await reader.ReadLineAsync().ConfigureAwait(false);
-                    if (!string.IsNullOrEmpty(path) && !_shuttingDown)
+                    if (!string.IsNullOrEmpty(path) && !_appCts.IsCancellationRequested)
                         Dispatcher.Invoke(() => OnSecondInstance(path));
                 }
+                catch (OperationCanceledException) { break; }
                 catch { /* перезапускаем цикл ожидания */ }
             }
         });
@@ -189,6 +191,12 @@ public partial class App : Application
         services.AddSingleton<LibVlcProvider>();
         services.AddSingleton<INotificationService, NotificationService>();
 
+        // Фабрики для дочерних VM (P1.6)
+        services.AddTransient<Func<MediaItem, ImageViewerViewModel>>(sp =>
+            item => new ImageViewerViewModel(item, sp.GetRequiredService<IImageCache>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<INotificationService>()));
+        services.AddTransient<Func<MediaItem, VideoViewerViewModel>>(sp =>
+            item => new VideoViewerViewModel(item, sp.GetRequiredService<LibVlcProvider>(), sp.GetRequiredService<ISettingsService>(), sp.GetRequiredService<IPlaybackPositionStore>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<INotificationService>()));
+
         // ViewModels
         services.AddSingleton<MainViewModel>();
         services.AddTransient<SettingsViewModel>();
@@ -209,11 +217,12 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _shuttingDown = true;
+        _appCts.Cancel();
         // Корректно освобождаем singletons (SettingsService, PlaybackPositionStore, LibVlcProvider).
         try { _host?.Dispose(); } catch { }
         try { _mutex?.ReleaseMutex(); } catch { }
         try { _mutex?.Dispose(); } catch { }
+        try { _appCts.Dispose(); } catch { }
         base.OnExit(e);
     }
 }

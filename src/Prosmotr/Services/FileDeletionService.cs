@@ -39,11 +39,12 @@ public sealed class FileDeletionService : IFileDeletionService
         }
 
         await _sem.WaitAsync();
+        Thread thread = null!;
         try
         {
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            var thread = new Thread(() =>
+            thread = new Thread(() =>
             {
                 try
                 {
@@ -73,6 +74,13 @@ public sealed class FileDeletionService : IFileDeletionService
             }
 
             AppLog.Write($"[FileDeletionService] IFileOperation TIMEOUT ({timeoutSec}s): {path} — STA thread stuck, abandoning");
+
+            // Пытаемся дождаться завершения потока, чтобы не оставлять зомби.
+            if (!thread.Join(TimeSpan.FromSeconds(15)))
+            {
+                try { thread.Interrupt(); } catch { }
+            }
+
             return false;
         }
         finally
