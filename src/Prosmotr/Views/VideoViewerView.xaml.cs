@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.Messaging;
+using Prosmotr.Infrastructure;
 using Prosmotr.ViewModels;
 
 namespace Prosmotr.Views;
@@ -73,7 +74,15 @@ public partial class VideoViewerView : UserControl
                 vm.Start();
                 FocusHostWindow();
             }
-            // если ещё не загружены — стартуем в OnLoaded (нативный HWND будет готов)
+            // Перепривязываем _mainVm на случай, если окно/VM сменились
+            var newMainVm = Window.GetWindow(this)?.DataContext as MainViewModel;
+            if (newMainVm != null && newMainVm != _mainVm)
+            {
+                if (_mainVm != null) _mainVm.PropertyChanged -= OnMainVmPropertyChanged;
+                _mainVm = newMainVm;
+                _mainVm.PropertyChanged += OnMainVmPropertyChanged;
+                UpdateCloneButton();
+            }
         }
     }
 
@@ -85,8 +94,10 @@ public partial class VideoViewerView : UserControl
         _vm.Start();
         Dispatcher.BeginInvoke(new Action(FocusHostWindow), DispatcherPriority.Loaded);
         _mainVm = Window.GetWindow(this)?.DataContext as MainViewModel;
+        AppLog.Write($"VideoViewerView.OnLoaded: _mainVm={_mainVm != null}");
         if (_mainVm != null) _mainVm.PropertyChanged += OnMainVmPropertyChanged;
         UpdateInfo();
+        UpdateCloneButton();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -349,6 +360,11 @@ public partial class VideoViewerView : UserControl
         WeakReferenceMessenger.Default.Send(new NavigateFileMessage(1));
 
     private void OnFullScreenClick(object sender, RoutedEventArgs e) => ToggleFullScreen();
+    private void OnCloneDisplayClick(object sender, RoutedEventArgs e)
+    {
+        AppLog.Write($"VideoViewerView.OnCloneDisplayClick: _mainVm={_mainVm != null}, CanToggleClone={_mainVm?.CanToggleClone}");
+        _mainVm?.ToggleCloneDisplayCommand.Execute(null);
+    }
 
     private static void ToggleFullScreen() =>
         WeakReferenceMessenger.Default.Send(new ToggleFullScreenMessage());
@@ -431,6 +447,10 @@ public partial class VideoViewerView : UserControl
         {
             UpdateInfo();
         }
+        else if (e.PropertyName == nameof(MainViewModel.CanToggleClone))
+        {
+            UpdateCloneButton();
+        }
     }
 
     private void UpdateInfo()
@@ -439,5 +459,11 @@ public partial class VideoViewerView : UserControl
         bool show = _mainVm?.IsFullScreen == true && _controlsShown && !string.IsNullOrEmpty(_mainVm.StatusText);
         InfoText.Text = _mainVm?.StatusText ?? string.Empty;
         FullscreenInfoBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateCloneButton()
+    {
+        if (CloneDisplayButton == null) return;
+        CloneDisplayButton.Visibility = (_mainVm?.CanToggleClone == true) ? Visibility.Visible : Visibility.Collapsed;
     }
 }

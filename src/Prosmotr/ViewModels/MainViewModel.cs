@@ -25,6 +25,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private readonly IThemeService _theme;
     private readonly IImageCache _imageCache;
     private readonly LibVlcProvider _vlc;
+    private readonly IDisplayTopologyService _displayTopology;
     private readonly IPlaybackPositionStore _positions;
     private readonly INotificationService _notify;
 
@@ -40,6 +41,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private bool _hasItems;
     [ObservableProperty] private bool _isFullScreen;
     [ObservableProperty] private bool _isSlideshowActive;
+    [ObservableProperty] private bool _cloneDisplayActive;
     [ObservableProperty] private string _statusText = string.Empty;
     [ObservableProperty] private string _currentFileName = "Просмотр";
 
@@ -76,6 +78,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// Показывается только когда есть что показывать и видны элементы управления (chrome).</summary>
     public bool ShowFullscreenInfo => IsFullScreen && ChromeVisible && !string.IsNullOrEmpty(StatusText);
 
+    public bool CanToggleClone => _displayTopology.CanToggle;
+
     public ThumbnailStripPosition ThumbnailStripPosition => _settings.Settings.ThumbnailStripPosition;
 
     public MainViewModel(
@@ -92,6 +96,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         LibVlcProvider vlc,
         IPlaybackPositionStore positions,
         INotificationService notify,
+        IDisplayTopologyService displayTopology,
         Func<MediaItem, ImageViewerViewModel> imageVmFactory,
         Func<MediaItem, VideoViewerViewModel> videoVmFactory)
     {
@@ -107,6 +112,15 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _vlc = vlc;
         _positions = positions;
         _notify = notify;
+        _displayTopology = displayTopology;
+        _displayTopology.TopologyChanged += (_, _) =>
+        {
+            CloneDisplayActive = _displayTopology.IsCloned;
+            OnPropertyChanged(nameof(CanToggleClone));
+            RefreshCommandStates();
+        };
+        CloneDisplayActive = _displayTopology.IsCloned;
+
         _imageVmFactory = imageVmFactory;
         _videoVmFactory = videoVmFactory;
 
@@ -268,6 +282,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         OpenWithCommand.NotifyCanExecuteChanged();
         ShowPropertiesCommand.NotifyCanExecuteChanged();
         ToggleSlideshowCommand.NotifyCanExecuteChanged();
+        ToggleCloneDisplayCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsFullScreenChanged(bool value)

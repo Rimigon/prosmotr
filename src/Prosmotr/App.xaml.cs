@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Prosmotr.Infrastructure;
 using Prosmotr.Models;
 using Prosmotr.Services;
 using Prosmotr.Services.Abstractions;
@@ -188,6 +189,7 @@ public partial class App : Application
         services.AddSingleton<IThumbnailService, ThumbnailService>();
         services.AddSingleton<IPlaybackPositionStore, PlaybackPositionStore>();
         services.AddSingleton<IFileAssociationService, FileAssociationService>();
+        services.AddSingleton<IDisplayTopologyService, DisplayTopologyService>();
         services.AddSingleton<LibVlcProvider>();
         services.AddSingleton<INotificationService, NotificationService>();
 
@@ -221,6 +223,17 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _appCts.Cancel();
+        // Восстанавливаем расширенный режим при выходе (если приложение включило clone).
+        try
+        {
+            var topology = _host?.Services.GetService<IDisplayTopologyService>();
+            if (topology != null)
+            {
+                AppLog.Write("App.OnExit: calling RestoreExtend");
+                topology.RestoreExtend();
+            }
+        }
+        catch (Exception ex) { AppLog.Error("App.OnExit", ex); }
         // Принудительно освобождаем текущий ViewModel (и плеер/Media) до выгрузки DI-хоста.
         try { (_host?.Services.GetService<MainViewModel>() as IDisposable)?.Dispose(); } catch { }
         // Гарантированно сбрасываем позиции видео на диск перед выгрузкой хоста.

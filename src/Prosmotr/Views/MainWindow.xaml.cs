@@ -17,10 +17,12 @@ namespace Prosmotr.Views;
 public partial class MainWindow : FluentWindow
 {
     private const int WM_KEYDOWN = 0x0100;
+    private const int WM_DISPLAYCHANGE = 0x007E;
 
     private readonly MainViewModel _vm;
     private readonly IServiceProvider _services;
     private readonly ISettingsService _settings;
+    private readonly IDisplayTopologyService _displayTopology;
     private readonly DispatcherTimer _chromeHideTimer;
     private Point _lastMousePos = new Point(-1, -1);
 
@@ -36,6 +38,7 @@ public partial class MainWindow : FluentWindow
         _vm = viewModel;
         _services = services;
         _settings = services.GetRequiredService<ISettingsService>();
+        _displayTopology = services.GetRequiredService<IDisplayTopologyService>();
         DataContext = _vm;
 
         _vm.SettingsRequested += OpenSettings;
@@ -64,6 +67,20 @@ public partial class MainWindow : FluentWindow
         UpdateStripLayout();
         Focus();
         Keyboard.Focus(this);
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (HwndSource.FromHwnd(hwnd) is HwndSource source)
+            source.AddHook(WndProcHook);
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        base.OnClosing(e);
+        if (!e.Cancel)
+        {
+            try { _displayTopology?.RestoreExtend(); }
+            catch (Exception ex) { AppLog.Error("MainWindow.OnClosing", ex); }
+        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -154,6 +171,15 @@ public partial class MainWindow : FluentWindow
             Strip.Width = double.NaN;
             Strip.Height = 92;
         }
+    }
+
+    private IntPtr WndProcHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WM_DISPLAYCHANGE)
+        {
+            _displayTopology?.OnDisplaySettingsChanged();
+        }
+        return IntPtr.Zero;
     }
 
     // --- Настройки ---
@@ -259,6 +285,10 @@ public partial class MainWindow : FluentWindow
                 return false;
             case Key.F:
                 _vm.ToggleFullScreenCommand.Execute(null);
+                return true;
+            case Key.F12:
+                if (_vm.ToggleCloneDisplayCommand.CanExecute(null))
+                    _vm.ToggleCloneDisplayCommand.Execute(null);
                 return true;
             case Key.Escape:
                 if (_vm.IsFullScreen) { _vm.ExitFullScreenCommand.Execute(null); return true; }

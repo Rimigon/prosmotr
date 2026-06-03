@@ -110,7 +110,8 @@ Single-file ломает загрузку нативных плагинов LibV
 - **Сервисы** (все — singletons, см. `App.ConfigureServices`) с интерфейсами в
   `Services/Abstractions/`: библиотека медиа, навигация, удаление (`IFileDeletionService` → `DeleteResult`),
   настройки, тема, кэш изображений, декодирование, миниатюры, позиции видео, ассоциации файлов,
-  shell-операции, провайдер LibVLC, **уведомления** (`INotificationService`/`NotificationService`).
+  shell-операции, провайдер LibVLC, **топология дисплеев** (`IDisplayTopologyService`/`DisplayTopologyService`),
+  **уведомления** (`INotificationService`/`NotificationService`).
 - **DI-фабрики для дочерних VM.** `MainViewModel` не создаёт `ImageViewerViewModel` и
   `VideoViewerViewModel` напрямую через `new`, а получает `Func<MediaItem, ImageViewerViewModel>`
   и `Func<MediaItem, VideoViewerViewModel>` из контейнера (зарегистрированы в `App.ConfigureServices`).
@@ -133,7 +134,7 @@ src/Prosmotr/
   Prosmotr.csproj            — TFM, x64, пакеты, запрет single-file
   Models/                    — MediaItem, AppSettings, RecentEntry, перечисления (MediaType, SortField…)
   Services/                  — реализации сервисов
-    Abstractions/            — интерфейсы сервисов (IxxxService)
+    Abstractions/            — интерфейсы сервисов (IxxxService), включая IDisplayTopologyService
   ViewModels/                — по VM на экран + MainViewModel (partial: Gallery, Navigation,
                                Presentation, Deletion, FileActions), ViewModelBase, Messages
   Views/                     — MainWindow, EmptyStateView, ImageViewerView, VideoViewerView,
@@ -144,7 +145,8 @@ src/Prosmotr/
   Infrastructure/            — AppLog, SupportedFormats, NativeMethods (Корзина),
                                RecycleBinRestore (отмена удаления), ShellThumbnail,
                                ExplorerSortReader, NaturalStringComparer,
-                               FullScreenHelper (Win32 borderless fullscreen)
+                               FullScreenHelper (Win32 borderless fullscreen),
+                               DisplayConfigApi (CCD: QueryDisplayConfig / SetDisplayConfig P/Invoke)
   Resources/                 — иконка app.ico, темы (AppResources.xaml)
 app/                         — ⚠️ опубликованная копия (в .gitignore), на неё ведёт ярлык
 ```
@@ -498,6 +500,26 @@ Magick.NET (конвертация в **BMP** в памяти — раньше �
   `Application.Current as App`. Вместо этого он получает `INotificationService` через
   публичное свойство `MainViewModel.NotificationService`, которое доступно через
   `Window.GetWindow(this)?.DataContext`.
+
+### 5.16. Дублирование экрана (Display Topology / Clone Mode)
+
+Функция переключения Windows в системный clone-режим («Дублировать эти экраны») через CCD API:
+- **API:** `QueryDisplayConfig` / `SetDisplayConfig` (P/Invoke в `Infrastructure/DisplayConfigApi.cs`).
+- **Сервис:** `DisplayTopologyService` (singleton), реализует `IDisplayTopologyService`.
+- **UI:** кнопка в нижней панели фото (`ImageViewerView`) и в оверлее видео (`VideoViewerView`), горячая клавиша `F12`.
+
+**Критичные нюансы:**
+- **Это системный clone mode, не «окно приложения».** `SDC_TOPOLOGY_CLONE` клонирует **весь desktop** (панель задач, окна, всё). Это то же самое, что Win+P → «Дублировать». Экраны **мигают/темнеют на 1–2 секунды** при переключении — это неизбежное поведение драйвера.
+- **HRESULT проверяется через `hr != 0`, а НЕ `hr < 0`.** `SetDisplayConfig`/`QueryDisplayConfig` возвращают обычные Win32 error codes: `0` = успех, **положительное число** = ошибка (`ERROR_BAD_CONFIGURATION = 1610`, `ERROR_INSUFFICIENT_BUFFER = 122`, `ERROR_INVALID_PARAMETER = 87` и т.д.). Проверка `hr < 0` никогда не ловит ошибки.
+- **`QueryDisplayConfig` P/Invoke — массивы должны быть `[Out]`.** Без `[Out]` marshaller может не записывать данные в managed массивы, и `QueryDisplayConfig` возвращает пустые структуры (все поля = 0), хотя HRESULT = 0. Исправлено: `[In, Out]` → `[Out]` для `pathArray` и `modeInfoArray`.
+- **`QDC_DATABASE_CURRENT` + `IntPtr.Zero` = `ERROR_INVALID_PARAMETER` (87).** `QueryDisplayConfig` с флагом `QDC_DATABASE_CURRENT` **требует**, чтобы последний параметр (`currentTopologyId`) был не-NULL (`out DISPLAYCONFIG_TOPOLOGY_ID`). Поэтому `SaveCurrentConfig` использует `QDC_ONLY_ACTIVE_PATHS` (где `NULL` допустим), а не `QDC_DATABASE_CURRENT`.
+- **Fallback `RestoreExtend` — `SDC_TOPOLOGY_EXTEND`, а не `SDC_USE_DATABASE_CURRENT`.** `SDC_USE_DATABASE_CURRENT` возвращает последнюю сохранённую конфигурацию вообще; если в persistence database последняя запись — clone, Windows просто вернёт clone. `SDC_TOPOLOGY_EXTEND` явно запрашивает extend. Добавлены модификаторы `SDC_ALLOW_CHANGES | SDC_PATH_PERSIST_IF_REQUIRED | SDC_VIRTUAL_MODE_AWARE`, чтобы Windows могла подобрать рабочий режим, даже если в базе нет готовой extend-записи.
+- **`SDC_VIRTUAL_MODE_AWARE` добавлено ко всем вызовам.** Windows 10+ использует virtual modes для clone; без этого флага `SetDisplayConfig` может отвергнуть валидную конфигурацию.
+- **Восстановление при shutdown.** `MainWindow.OnClosing` (override, не событие) и `App.OnExit` безусловно вызывают `RestoreExtend()`. Дублирование безопасно — `RestoreExtend` ранний return, если `!IsCloned`. При **нормальном** закрытии окна (`X`, `Alt+F4`) `OnClosing` гарантированно отработает. Если процесс **убивается** через Task Manager / `Stop-Process` — `OnClosing`/`OnExit` не вызываются; это ограничение Windows.
+- **Отключение монитора.** `MainWindow` ловит `WM_DISPLAYCHANGE` через `HwndSource.AddHook` и передаёт в `DisplayTopologyService.OnDisplaySettingsChanged()`. Сброс `IsCloned` автоматически **не производится** при `!CanClone` (в clone-режиме `GetSystemMetrics(SM_CMONITORS)` часто возвращает 1). Если монитор реально отключился — Windows сама переключит topology и пришлёт `WM_DISPLAYCHANGE`.
+- **Обновление CanExecute команды.** `MainViewModel` при событии `TopologyChanged` вызывает `RefreshCommandStates()`, чтобы `ToggleCloneDisplayCommand` корректно обновила состояние `CanExecute`.
+- **Видео: кнопка clone не через `RelativeSource AncestorType=Window`.** Из-за airspace LibVLCSharp.WPF `AncestorType=Window` в XAML найдёт `ForegroundWindow`, а не `MainWindow`. Поэтому в `VideoViewerView` видимостью и кликом кнопки управляет code-behind через `_mainVm` (кэшированный в `OnLoaded`). Все клики логируются в `app.log`. Для фото такой проблемы нет — биндинг через `RelativeSource AncestorType=Window` работает.
+- **Диагностика.** Все операции clone/extend логируются с префиксом `[Clone]` в `app.log`. Если функционал не работает — первым делом смотреть `%LOCALAPPDATA%\Prosmotr\app.log`.
 
 ---
 

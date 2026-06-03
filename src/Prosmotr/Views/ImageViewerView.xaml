@@ -97,6 +97,17 @@
                            Command="{Binding CopyImageCommand}">
                     <ui:Button.Icon><ui:SymbolIcon Symbol="ImageCopy24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
                 </ui:Button>
+
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="6,2" />
+
+                <ui:Button Appearance="Transparent" ToolTip="Дублировать на экран (F12)"
+                           Command="{Binding DataContext.ToggleCloneDisplayCommand,
+                                     RelativeSource={RelativeSource AncestorType=Window}}"
+                           Visibility="{Binding DataContext.CanToggleClone,
+                                         RelativeSource={RelativeSource AncestorType=Window},
+                                         Converter={StaticResource BoolToVis}}">
+                    <ui:Button.Icon><ui:SymbolIcon Symbol="Desktop24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
+                </ui:Button>
             </StackPanel>
         </Border>
     </Grid>

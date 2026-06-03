@@ -84,6 +84,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <!-- Play / Pause -->
@@ -194,6 +195,15 @@
                                    ToolTip="Полный экран (F)"
                                    AutomationProperties.Name="Полный экран">
                             <ui:SymbolIcon Symbol="FullScreenMaximize24" Foreground="White" />
+                        </ui:Button>
+
+                        <!-- Дублирование экрана -->
+                        <ui:Button x:Name="CloneDisplayButton" Grid.Column="12" Appearance="Transparent"
+                                   Click="OnCloneDisplayClick"
+                                   ToolTip="Дублировать на экран (F12)"
+                                   Visibility="Collapsed"
+                                   AutomationProperties.Name="Дублировать на экран">
+                            <ui:SymbolIcon Symbol="Desktop24" Foreground="White" />
                         </ui:Button>
                     </Grid>
                 </Border>

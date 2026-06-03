@@ -14,6 +14,9 @@ public sealed partial class MainViewModel
     [RelayCommand]
     private void ToggleFullScreen() => IsFullScreen = !IsFullScreen;
 
+    [RelayCommand(CanExecute = nameof(CanToggleClone))]
+    private void ToggleCloneDisplay() => _displayTopology.ToggleClone();
+
     [RelayCommand]
     private void ExitFullScreen() => IsFullScreen = false;
 
