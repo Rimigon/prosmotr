@@ -13,6 +13,15 @@ public static class AppLog
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(LogFile)!);
+
+            var fi = new FileInfo(LogFile);
+            if (fi.Exists && fi.Length > 10 * 1024 * 1024)
+            {
+                var old = LogFile + ".old";
+                if (File.Exists(old)) File.Delete(old);
+                File.Move(LogFile, old);
+            }
+
             File.AppendAllText(LogFile, $"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
         }
         catch { /* логирование не должно влиять на работу */ }

@@ -22,9 +22,16 @@ public sealed partial class SettingsViewModel : ViewModelBase
     public IReadOnlyList<ThumbnailStripPosition> StripPositions { get; } =
         new[] { ThumbnailStripPosition.Bottom, ThumbnailStripPosition.Left };
 
+    // Навигационные и критичные клавиши, которые нельзя назначать на закрытие/скрытие UI.
+    private static readonly HashSet<string> ConflictingKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Delete", "Left", "Right", "Up", "Down", "Space", "Escape",
+        "OemOpenBrackets", "OemCloseBrackets", "OemPlus", "OemMinus", "Add", "Subtract"
+    };
+
     public IReadOnlyList<string> ExitKeys { get; } = new[]
     {
-        "PageDown", "PageUp", "End", "Home", "Insert", "Delete", "Escape",
+        "PageDown", "PageUp", "End", "Home", "Insert",
         "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
         "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P",
         "A", "S", "D", "F", "G", "H", "J", "K", "L",
@@ -86,11 +93,14 @@ public sealed partial class SettingsViewModel : ViewModelBase
         FrameByFrameSeek = s.FrameByFrameSeek;
         MatchExplorerSort = s.MatchExplorerSort;
         IntegrateShell = s.IntegrateShell;
-        ExitKey = s.ExitKey;
-        ToggleChromeKey = s.ToggleChromeKey;
+        ExitKey = IsAllowedKey(s.ExitKey) ? s.ExitKey : "End";
+        ToggleChromeKey = IsAllowedKey(s.ToggleChromeKey) ? s.ToggleChromeKey : "PageDown";
         IsAssociationsRegistered = _assoc.IsRegistered;
         _loading = false;
     }
+
+    private static bool IsAllowedKey(string key)
+        => !ConflictingKeys.Contains(key) && Enum.TryParse<System.Windows.Input.Key>(key, out _);
 
     private void Commit(bool immediate = false)
     {

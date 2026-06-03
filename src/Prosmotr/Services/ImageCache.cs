@@ -19,6 +19,7 @@ public interface IImageCache
 public sealed class ImageCache : IImageCache
 {
     private const int Capacity = 24;
+    private const long MaxBytes = 800L * 1024 * 1024;
 
     private readonly IImageDecodingService _decoder;
     private readonly object _gate = new();
@@ -48,11 +49,17 @@ public sealed class ImageCache : IImageCache
             var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
             var task = _decoder.LoadAsync(path, 0, linked.Token);
 
-            // После завершения задачи освобождаем связанный CTS.
-            _ = task.ContinueWith(_ => linked.Dispose(), TaskScheduler.Default);
-
-            _map[path] = new CacheEntry { Task = task, Cts = cts };
+            var entry = new CacheEntry { Task = task, Cts = cts };
+            _map[path] = entry;
             _lru.AddFirst(path);
+
+            _ = task.ContinueWith(t =>
+            {
+                if (t.IsCompletedSuccessfully && t.Result is System.Windows.Media.Imaging.BitmapSource bmp)
+                    entry.EstimatedBytes = (long)bmp.PixelWidth * bmp.PixelHeight * bmp.Format.BitsPerPixel / 8;
+                linked.Dispose();
+            }, TaskScheduler.Default);
+
             Trim();
             return task;
         }
@@ -95,6 +102,16 @@ public sealed class ImageCache : IImageCache
             var oldest = _lru.Last!.Value;
             RemoveEntry(oldest);
         }
+
+        long total = 0;
+        foreach (var kvp in _map) total += kvp.Value.EstimatedBytes;
+        while (total > MaxBytes && _lru.Count > 0)
+        {
+            var oldest = _lru.Last!.Value;
+            if (_map.TryGetValue(oldest, out var e))
+                total -= e.EstimatedBytes;
+            RemoveEntry(oldest);
+        }
     }
 
     private void RemoveEntry(string path)
@@ -111,5 +128,6 @@ public sealed class ImageCache : IImageCache
     {
         public required Task<ImageSource?> Task;
         public required CancellationTokenSource Cts;
+        public long EstimatedBytes;
     }
 }

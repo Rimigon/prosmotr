@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using Prosmotr.Models;
 using Prosmotr.ViewModels;
 using SymbolRegular = Wpf.Ui.Controls.SymbolRegular;
+using XamlAnimatedGif;
 
 namespace Prosmotr.Views;
 
@@ -93,6 +94,8 @@ public partial class ImageViewerView : UserControl
         _vm.ZoomInRequested -= OnZoomIn;
         _vm.ZoomOutRequested -= OnZoomOut;
         _vm.ViewModeRequested -= OnViewMode;
+        // Останавливаем анимацию GIF, чтобы декодер освободил ресурсы (issue: переход GIF→JPG).
+        AnimationBehavior.SetSourceUri(AnimatedImage, null);
         _vm = null;
     }
 

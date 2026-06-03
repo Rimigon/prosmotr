@@ -403,6 +403,33 @@ Magick.NET (конвертация в **BMP** в памяти — раньше �
   `DefaultPlaybackRate` помечены `[Range(...)]`. При загрузке `settings.json`
   `SettingsService.ValidateAndFix` сравнивает значения с атрибутами и заменяет невалидные
   на дефолтные (например, `"SeekStepSeconds": -5` → `5`).
+- **Батчевание миниатюр в `ThumbnailStripViewModel`.** Вместо `InvokeAsync` на каждый
+  готовый thumbnail — `ConcurrentQueue` + `DispatcherTimer` с интервалом 50 мс.
+  Поток декодирования складывает результаты в очередь, UI-поток сбрасывает пачкой.
+  Это предотвращает фризы при открытии папок с тысячами файлов.
+- **`Dispatcher.Yield(DispatcherPriority.Render)` в ленте.** При добавлении порций записей
+  в `ObservableCollection` (метод `SetItemsAsync`) `await Task.Yield()` заменён на
+  `await Dispatcher.Yield(DispatcherPriority.Render)` — гарантирует, что WPF отрисует кадр
+  между пачками и окно остаётся отзывчивым.
+- **Ограничение памяти `ImageCache`.** Помимо лимита по количеству (`Capacity = 24`), кэш
+  отслеживает приблизительный размер загруженных `BitmapSource`:
+  `PixelWidth × PixelHeight × BitsPerPixel / 8`. При превышении 800 МБ самые старые
+  элементы вытесняются по LRU, независимо от Capacity — процесс не раздувается >1 ГБ
+  при листании тяжёлых RAW/HEIC.
+- **Валидация горячих клавиш.** Из списка `ExitKeys` исключены навигационные и критичные
+  клавиши (`Delete`, `Left`, `Right`, `Up`, `Down`, `Space`, `Escape` и т.д.). При загрузке
+  `settings.json` некорректные значения `ExitKey`/`ToggleChromeKey` подменяются на безопасные
+  дефолты (`End` / `PageDown`), чтобы случайно не сломать навигацию или закрытие.
+- **Остановка GIF при смене файла.** В `ImageViewerView.DetachVm` вызывается
+  `AnimationBehavior.SetSourceUri(AnimatedImage, null)` — декодер XamlAnimatedGif
+  освобождает потоки и GDI-ресурсы до того, как View переиспользуется для следующего файла.
+- **Ротация `AppLog`.** При старте, если `app.log` превышает 10 МБ, он переименовывается
+  в `app.log.old` (одна резервная копия). Старый `.old` при этом удаляется — лог не растёт
+  бесконечно.
+- **`SetVideoUnavailable` сбрасывает все поля.** В `FilePropertiesViewModel` условие
+  `&& _durationRow.Value == "…"` убрано: при ошибке или таймауте `Media.Parse` все поля
+  видео (разрешение, длительность, FPS) сбрасываются на `"—"`, а не показывают
+  устаревшие/частичные значения.
 
 ---
 

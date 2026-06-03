@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Prosmotr.Models;
@@ -14,7 +16,9 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase
     private const int AddBatchSize = 100;
 
     private readonly IThumbnailService _thumbs;
+    private readonly ConcurrentQueue<(ThumbnailEntry Entry, ImageSource Image)> _thumbQueue = new();
     private CancellationTokenSource? _cts;
+    private DispatcherTimer? _thumbBatchTimer;
     private bool _suppressSelection;
 
     public ObservableCollection<ThumbnailEntry> Items { get; } = new();
@@ -53,7 +57,7 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase
 
             // Даём WPF отрисовать кадр между пачками
             if (i + AddBatchSize < entries.Count)
-                await Task.Yield();
+                await Dispatcher.Yield(DispatcherPriority.Render);
         }
 
         _ = LoadThumbnailsAsync(entries, ct);
@@ -86,6 +90,14 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher == null) return;
 
+        await dispatcher.InvokeAsync(() =>
+        {
+            _thumbBatchTimer?.Stop();
+            _thumbBatchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+            _thumbBatchTimer.Tick += (_, _) => FlushThumbnailQueue();
+            _thumbBatchTimer.Start();
+        });
+
         var options = new ParallelOptions
         {
             MaxDegreeOfParallelism = Math.Max(2, Environment.ProcessorCount / 2),
@@ -98,15 +110,26 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase
             {
                 var img = await _thumbs.GetThumbnailAsync(entry.Item, ThumbSize, token).ConfigureAwait(false);
                 if (img == null || token.IsCancellationRequested) return;
-
-                await dispatcher.InvokeAsync(() =>
-                {
-                    if (!token.IsCancellationRequested)
-                        entry.Thumbnail = img;
-                }, DispatcherPriority.Background, token);
+                _thumbQueue.Enqueue((entry, img));
             }
             catch (OperationCanceledException) { }
             catch { /* игнорируем ошибки отдельных миниатюр */ }
         });
+
+        await dispatcher.InvokeAsync(() =>
+        {
+            FlushThumbnailQueue();
+            _thumbBatchTimer?.Stop();
+            _thumbBatchTimer = null;
+        });
+    }
+
+    private void FlushThumbnailQueue()
+    {
+        while (_thumbQueue.TryDequeue(out var pair))
+        {
+            if (pair.Entry.Thumbnail == null)
+                pair.Entry.Thumbnail = pair.Image;
+        }
     }
 }

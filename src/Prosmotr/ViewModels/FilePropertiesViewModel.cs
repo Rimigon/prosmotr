@@ -155,7 +155,7 @@ public sealed partial class FilePropertiesViewModel : ViewModelBase
     {
         if (_dimensionsRow != null) _dimensionsRow.Value = "—";
         if (_frameRateRow != null) _frameRateRow.Value = "—";
-        if (_durationRow != null && _durationRow.Value == "…") _durationRow.Value = "—";
+        if (_durationRow != null) _durationRow.Value = "—";
     }
 
     private string TypeText()
