@@ -285,5 +285,13 @@ public class ZoomBorder : Border
         ReleaseMouseCapture();
     }
 
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        base.OnLostMouseCapture(e);
+        _dragging = false;
+        Cursor = Cursors.Arrow;
+        ReleaseMouseCapture();
+    }
+
     private void RaiseZoom() => ZoomChanged?.Invoke(this, _scale.ScaleX * 100.0);
 }

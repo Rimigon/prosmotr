@@ -167,6 +167,10 @@ app/                         — ⚠️ опубликованная копия 
 - **Touch / pinch-to-zoom.** `IsManipulationEnabled = true`. `ManipulationDelta` разбирает
   `DeltaManipulation.Scale` (pinch → `ZoomAt`) и `DeltaManipulation.Translation` (pan →
   сдвиг `_translate`). Работает на планшетах / Surface без стилуса.
+- **При потере захвата мыши (`OnLostMouseCapture`) сбрасывается `_dragging`.** Если во время
+  перетаскивания курсор уходит за пределы окна, `OnMouseLeftButtonUp` не вызовется, а
+  `OnLostMouseCapture` — да. Без сброса флага изображение продолжит «прилипать» к курсору
+  при возвращении мыши в окно.
 
 ### 5.2. Стартовый экран (`EmptyStateView`) обязан прокручиваться
 

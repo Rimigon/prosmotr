@@ -162,10 +162,17 @@ public sealed partial class ImageViewerViewModel : ViewModelBase, IDisposable
             encoder.Frames.Add(BitmapFrame.Create(rotated));
 
             var tmp = Item.FullPath + ".tmp";
-            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write))
-                encoder.Save(fs);
+            try
+            {
+                using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write))
+                    encoder.Save(fs);
 
-            File.Move(tmp, Item.FullPath, overwrite: true);
+                File.Move(tmp, Item.FullPath, overwrite: true);
+            }
+            finally
+            {
+                try { File.Delete(tmp); } catch { }
+            }
 
             // Сброс — теперь файл физически повёрнут.
             Rotation = 0;

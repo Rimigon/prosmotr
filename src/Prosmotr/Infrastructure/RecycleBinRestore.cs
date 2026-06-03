@@ -82,8 +82,9 @@ public static class RecycleBinRestore
             string name = item.Name;
             string from = item.ExtendedProperty("System.Recycle.DeletedFrom");
             if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(name)) return false;
-            var full = Path.Combine(from, name);
-            return string.Equals(full, originalPath, StringComparison.OrdinalIgnoreCase);
+            var full = Path.GetFullPath(Path.Combine(from, name));
+            var normalizedOriginal = Path.GetFullPath(originalPath);
+            return string.Equals(full, normalizedOriginal, StringComparison.OrdinalIgnoreCase);
         }
         catch
         {
