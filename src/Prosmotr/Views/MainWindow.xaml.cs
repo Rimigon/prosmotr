@@ -381,8 +381,9 @@ public partial class MainWindow : FluentWindow
 
     private void OpenProperties(MediaItem item)
     {
-        var vlc = _services.GetRequiredService<LibVlcProvider>();
-        var window = new FilePropertiesWindow(item, vlc) { Owner = this };
+        var window = _services.GetRequiredService<FilePropertiesWindow>();
+        window.Initialize(item);
+        window.Owner = this;
         _suspendHotkeys = true;
         try { window.ShowDialog(); }
         finally { _suspendHotkeys = false; }

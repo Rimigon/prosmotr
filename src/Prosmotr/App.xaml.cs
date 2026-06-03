@@ -204,6 +204,7 @@ public partial class App : Application
         // Окна
         services.AddSingleton<MainWindow>();
         services.AddTransient<SettingsWindow>();
+        services.AddTransient<FilePropertiesWindow>();
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

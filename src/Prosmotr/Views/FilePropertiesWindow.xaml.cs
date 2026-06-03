@@ -9,10 +9,17 @@ namespace Prosmotr.Views;
 /// <summary>Окно «Свойства» в стиле приложения (вместо системного диалога Windows).</summary>
 public partial class FilePropertiesWindow : FluentWindow
 {
-    public FilePropertiesWindow(MediaItem item, LibVlcProvider vlc)
+    private readonly LibVlcProvider _vlc;
+
+    public FilePropertiesWindow(LibVlcProvider vlc)
     {
         InitializeComponent();
-        var viewModel = new FilePropertiesViewModel(item, vlc);
+        _vlc = vlc;
+    }
+
+    public void Initialize(MediaItem item)
+    {
+        var viewModel = new FilePropertiesViewModel(item, _vlc);
         DataContext = viewModel;
         _ = viewModel.LoadAsync();
     }

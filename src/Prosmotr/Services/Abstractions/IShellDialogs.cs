@@ -3,9 +3,12 @@ namespace Prosmotr.Services.Abstractions;
 /// <summary>Удаление файла в Корзину или навсегда.</summary>
 public interface IFileDeletionService
 {
-    /// <summary>Удалить файл. permanent=false — в Корзину. Возвращает true при успехе.</summary>
-    Task<bool> DeleteAsync(string path, bool permanent);
+    /// <summary>Удалить файл. permanent=false — в Корзину.</summary>
+    Task<DeleteResult> DeleteAsync(string path, bool permanent);
 }
+
+/// <summary>Результат операции удаления.</summary>
+public sealed record DeleteResult(bool Success, string? ErrorMessage);
 
 /// <summary>Системные диалоги: открытие файла/папки и подтверждения.</summary>
 public interface IDialogService

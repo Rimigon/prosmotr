@@ -23,38 +23,42 @@ public sealed class FileDeletionService : IFileDeletionService
     // с параллельными COM-вызовами IFileOperation из разных потоков.
     private static readonly SemaphoreSlim _sem = new(1, 1);
 
-    public async Task<bool> DeleteAsync(string path, bool permanent)
+    public async Task<DeleteResult> DeleteAsync(string path, bool permanent)
     {
         if (!File.Exists(path))
-            return false;
+            return new DeleteResult(false, "Файл не найден.");
 
         if (permanent)
         {
             try
             {
                 File.Delete(path);
-                return true;
+                return new DeleteResult(true, null);
             }
-            catch { return false; }
+            catch (Exception ex)
+            {
+                AppLog.Write($"[FileDeletionService] Permanent delete exception: {path} — {ex.Message}");
+                return new DeleteResult(false, "Не удалось удалить файл.");
+            }
         }
 
         await _sem.WaitAsync();
         Thread thread = null!;
         try
         {
-            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var tcs = new TaskCompletionSource<DeleteResult>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             thread = new Thread(() =>
             {
                 try
                 {
                     bool ok = MoveToRecycleBinViaIFileOperation(path);
-                    tcs.TrySetResult(ok);
+                    tcs.TrySetResult(new DeleteResult(ok, ok ? null : "Операция отменена или не выполнена."));
                 }
                 catch (Exception ex)
                 {
                     AppLog.Write($"[FileDeletionService] IFileOperation exception: {path} — {ex.Message}");
-                    tcs.TrySetResult(false);
+                    tcs.TrySetResult(new DeleteResult(false, "Ошибка при перемещении в Корзину."));
                 }
             })
             {
@@ -81,7 +85,7 @@ public sealed class FileDeletionService : IFileDeletionService
                 try { thread.Interrupt(); } catch { }
             }
 
-            return false;
+            return new DeleteResult(false, $"Таймаут операции ({timeoutSec} с).");
         }
         finally
         {

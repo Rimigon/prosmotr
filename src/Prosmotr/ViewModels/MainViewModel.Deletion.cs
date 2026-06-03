@@ -1,0 +1,110 @@
+using CommunityToolkit.Mvvm.Input;
+using Prosmotr.Infrastructure;
+using Prosmotr.Models;
+using Prosmotr.Services.Abstractions;
+
+namespace Prosmotr.ViewModels;
+
+/// <summary>Часть MainViewModel: удаление файлов и восстановление из Корзины.</summary>
+public sealed partial class MainViewModel
+{
+    // --- Удаление ---
+
+    private bool _isDeleting;
+    private MediaItem? _lastDeletedItem;
+    private int _lastDeletedIndex;
+
+    [RelayCommand(CanExecute = nameof(CanDelete))]
+    private async Task Delete()
+    {
+        if (_isDeleting) return;
+        var cur = _nav.Current;
+        if (cur == null) return;
+
+        _isDeleting = true;
+        DeleteCommand.NotifyCanExecuteChanged();
+        try
+        {
+            var permanent = _settings.Settings.PermanentDelete;
+
+            if (_settings.Settings.ConfirmDelete)
+            {
+                var msg = permanent
+                    ? $"Удалить «{cur.FileName}» безвозвратно?"
+                    : $"Переместить «{cur.FileName}» в Корзину?";
+                var confirmed = await _dialog.ConfirmAsync("Удаление файла", msg, "Удалить", "Отмена");
+                if (!confirmed) return;
+            }
+
+            var index = _nav.CurrentIndex;
+            var result = await _deletion.DeleteAsync(cur.FullPath, permanent);
+            if (result.Success)
+            {
+                _positions.Remove(cur.FullPath);
+                _nav.RemoveAt(index); // удаляем по зафиксированному индексу, а не по текущему —
+                                      // иначе во время await пользователь мог сменить файл стрелками
+
+                var notify = _settings.Settings.ShowDeleteNotification;
+                if (permanent)
+                {
+                    ClearUndoState();
+                    if (notify)
+                        _notify.Show($"«{cur.FileName}» удалён навсегда.", NotificationKind.Success);
+                }
+                else
+                {
+                    // Запоминаем для отмены. Восстановить можно кнопкой на панели,
+                    // а при включённой плашке — ещё и кнопкой «Отменить» в самом тосте.
+                    _lastDeletedItem = cur;
+                    _lastDeletedIndex = index;
+                    RestoreLastDeleteCommand.NotifyCanExecuteChanged();
+                    if (notify)
+                        _notify.Show($"«{cur.FileName}» перемещён в корзину.", NotificationKind.Success,
+                            "Отменить", () => RestoreLastDeleteCommand.Execute(null));
+                }
+            }
+            else
+            {
+                _notify.Show(result.ErrorMessage ?? "Не удалось удалить файл.", NotificationKind.Error);
+            }
+        }
+        finally
+        {
+            _isDeleting = false;
+            DeleteCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private bool CanDelete => !_isDeleting && _nav.Current != null;
+
+    // --- Отмена удаления (восстановление из Корзины) ---
+
+    [RelayCommand(CanExecute = nameof(CanRestore))]
+    private async Task RestoreLastDelete()
+    {
+        var item = _lastDeletedItem;
+        if (item == null) return;
+
+        var ok = await RecycleBinRestore.RestoreAsync(item.FullPath);
+        if (ok)
+        {
+            var restored = _library.CreateItem(item.FullPath) ?? item;
+            _nav.InsertAt(restored, _lastDeletedIndex);
+            ClearUndoState();
+            _notify.Show($"«{restored.FileName}» восстановлен.", NotificationKind.Success);
+        }
+        else
+        {
+            _notify.Show("Не удалось восстановить файл из корзины.", NotificationKind.Error);
+        }
+    }
+
+    private bool CanRestore => _lastDeletedItem != null;
+
+    private void ClearUndoState()
+    {
+        if (_lastDeletedItem == null) return;
+        _lastDeletedItem = null;
+        RestoreLastDeleteCommand.NotifyCanExecuteChanged();
+    }
+}

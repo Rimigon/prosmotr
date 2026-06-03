@@ -29,13 +29,8 @@ public sealed partial class MainViewModel : ViewModelBase
     private readonly INotificationService _notify;
 
     private readonly DispatcherTimer _slideshowTimer;
-    private CancellationTokenSource? _openCts;
     private readonly Func<MediaItem, ImageViewerViewModel> _imageVmFactory;
     private readonly Func<MediaItem, VideoViewerViewModel> _videoVmFactory;
-
-    // Последнее удаление в корзину — для отмены (восстановления).
-    private MediaItem? _lastDeletedItem;
-    private int _lastDeletedIndex;
 
     public ThumbnailStripViewModel ThumbnailStrip { get; }
 
@@ -52,9 +47,6 @@ public sealed partial class MainViewModel : ViewModelBase
     /// <summary>Видны ли «плавающие» элементы поверх контента (нижняя панель фото и боковые стрелки).
     /// Скрываются по таймеру бездействия и снова показываются при движении мыши (управляет MainWindow).</summary>
     [ObservableProperty] private bool _chromeVisible = true;
-
-    private bool _suppressSortChange;
-    private string? _currentFolderKey;
 
     public IReadOnlyList<SortField> SortFields { get; } = new[]
     {
@@ -158,339 +150,13 @@ public sealed partial class MainViewModel : ViewModelBase
         }
     }
 
-    // --- Открытие ---
-
-    [RelayCommand]
-    private async Task OpenFile()
-    {
-        var path = _dialog.OpenFile(SupportedFormats.AllExtensions);
-        if (path != null) await OpenPathAsync(path);
-    }
-
-    [RelayCommand]
-    private async Task OpenFolder()
-    {
-        var path = _dialog.OpenFolder();
-        if (path != null) await OpenPathAsync(path);
-    }
-
-    /// <summary>Открыть путь (файл или папку), построить галерею и перейти к нему.</summary>
-    public async Task OpenPathAsync(string path)
-    {
-        _openCts?.Cancel();
-        _openCts = new CancellationTokenSource();
-        var ct = _openCts.Token;
-
-        try
-        {
-            MediaLibraryResult result;
-            if (Directory.Exists(path))
-            {
-                var (sort, order) = await ResolveOrderingAsync(path);
-                result = await _library.BuildFromFolderAsync(path, sort, order, ct);
-                _recent.Add(path, isFolder: true);
-                if (order == null) ReflectSort(sort);
-            }
-            else if (File.Exists(path) && SupportedFormats.IsSupported(path))
-            {
-                var folder = Path.GetDirectoryName(path) ?? string.Empty;
-                var (sort, order) = await ResolveOrderingAsync(folder);
-                result = await _library.BuildFromFileAsync(path, sort, order, ct);
-                _recent.Add(path, isFolder: false);
-                _settings.Settings.LastFilePath = path;
-                _settings.SaveDebounced();
-                if (order == null) ReflectSort(sort);
-            }
-            else
-            {
-                _notify.Show("Формат файла не поддерживается.", NotificationKind.Warning);
-                return;
-            }
-
-            if (result.Items.Count == 0)
-            {
-                _nav.Clear();
-                _notify.Show("В папке нет поддерживаемых медиафайлов.", NotificationKind.Warning);
-                return;
-            }
-
-            ClearUndoState(); // открыли другую галерею — отмена прежнего удаления неактуальна
-            _nav.SetItems(result.Items, result.StartIndex);
-        }
-        catch (Exception ex)
-        {
-            AppLog.Error("OpenPathAsync", ex);
-            _notify.Show("Не удалось открыть файл или папку.", NotificationKind.Error);
-        }
-    }
-
-    public Task HandleDropAsync(IEnumerable<string> paths)
-    {
-        var path = paths.FirstOrDefault(p => File.Exists(p) || Directory.Exists(p));
-        return path != null ? OpenPathAsync(path) : Task.CompletedTask;
-    }
-
-    // --- Навигация ---
-
-    [RelayCommand(CanExecute = nameof(CanNavigate))]
-    private void Next() => _nav.MoveNext();
-
-    [RelayCommand(CanExecute = nameof(CanNavigate))]
-    private void Previous() => _nav.MovePrevious();
-
-    private bool CanNavigate => _nav.CanGoNext;
-
-    // --- Удаление ---
-
-    private bool _isDeleting;
-
-    [RelayCommand(CanExecute = nameof(CanDelete))]
-    private async Task Delete()
-    {
-        if (_isDeleting) return;
-        var cur = _nav.Current;
-        if (cur == null) return;
-
-        _isDeleting = true;
-        DeleteCommand.NotifyCanExecuteChanged();
-        try
-        {
-            var permanent = _settings.Settings.PermanentDelete;
-
-            if (_settings.Settings.ConfirmDelete)
-            {
-                var msg = permanent
-                    ? $"Удалить «{cur.FileName}» безвозвратно?"
-                    : $"Переместить «{cur.FileName}» в Корзину?";
-                var confirmed = await _dialog.ConfirmAsync("Удаление файла", msg, "Удалить", "Отмена");
-                if (!confirmed) return;
-            }
-
-            var index = _nav.CurrentIndex;
-            var ok = await _deletion.DeleteAsync(cur.FullPath, permanent);
-            if (ok)
-            {
-                _positions.Remove(cur.FullPath);
-                _nav.RemoveAt(index); // удаляем по зафиксированному индексу, а не по текущему —
-                                      // иначе во время await пользователь мог сменить файл стрелками
-
-                var notify = _settings.Settings.ShowDeleteNotification;
-                if (permanent)
-                {
-                    ClearUndoState();
-                    if (notify)
-                        _notify.Show($"«{cur.FileName}» удалён навсегда.", NotificationKind.Success);
-                }
-                else
-                {
-                    // Запоминаем для отмены. Восстановить можно кнопкой на панели,
-                    // а при включённой плашке — ещё и кнопкой «Отменить» в самом тосте.
-                    _lastDeletedItem = cur;
-                    _lastDeletedIndex = index;
-                    RestoreLastDeleteCommand.NotifyCanExecuteChanged();
-                    if (notify)
-                        _notify.Show($"«{cur.FileName}» перемещён в корзину.", NotificationKind.Success,
-                            "Отменить", () => RestoreLastDeleteCommand.Execute(null));
-                }
-            }
-            else
-            {
-                _notify.Show("Не удалось удалить файл.", NotificationKind.Error);
-            }
-        }
-        finally
-        {
-            _isDeleting = false;
-            DeleteCommand.NotifyCanExecuteChanged();
-        }
-    }
-
-    private bool CanDelete => !_isDeleting && _nav.Current != null;
-    private bool HasCurrent => _nav.Current != null;
-
-    // --- Отмена удаления (восстановление из Корзины) ---
-
-    [RelayCommand(CanExecute = nameof(CanRestore))]
-    private async Task RestoreLastDelete()
-    {
-        var item = _lastDeletedItem;
-        if (item == null) return;
-
-        var ok = await RecycleBinRestore.RestoreAsync(item.FullPath);
-        if (ok)
-        {
-            var restored = _library.CreateItem(item.FullPath) ?? item;
-            _nav.InsertAt(restored, _lastDeletedIndex);
-            ClearUndoState();
-            _notify.Show($"«{restored.FileName}» восстановлен.", NotificationKind.Success);
-        }
-        else
-        {
-            _notify.Show("Не удалось восстановить файл из корзины.", NotificationKind.Error);
-        }
-    }
-
-    private bool CanRestore => _lastDeletedItem != null;
-
-    private void ClearUndoState()
-    {
-        if (_lastDeletedItem == null) return;
-        _lastDeletedItem = null;
-        RestoreLastDeleteCommand.NotifyCanExecuteChanged();
-    }
-
-    // --- Действия с файлом ---
-
-    [RelayCommand(CanExecute = nameof(HasCurrent))]
-    private void ShowInExplorer() => Run(p => _shell.ShowInExplorer(p));
-
-    [RelayCommand(CanExecute = nameof(HasCurrent))]
-    private void OpenContainingFolder() => Run(p => _shell.OpenContainingFolder(p));
-
-    [RelayCommand(CanExecute = nameof(HasCurrent))]
-    private void CopyPath() => Run(p =>
-    {
-        _shell.CopyPathToClipboard(p);
-        _notify.Show("Путь к файлу скопирован.", NotificationKind.Success);
-    });
-
-    [RelayCommand(CanExecute = nameof(HasCurrent))]
-    private void OpenWith() => Run(p => _shell.OpenWith(p));
-
-    [RelayCommand(CanExecute = nameof(HasCurrent))]
-    private void ShowProperties()
-    {
-        var cur = _nav.Current;
-        if (cur != null) PropertiesRequested?.Invoke(cur);
-    }
-
-    private void Run(Action<string> action)
-    {
-        var cur = _nav.Current;
-        if (cur != null) action(cur.FullPath);
-    }
-
-    // --- Настройки / режимы ---
-
-    [RelayCommand]
-    private void OpenSettings() => SettingsRequested?.Invoke();
-
-    [RelayCommand]
-    private void ToggleFullScreen() => IsFullScreen = !IsFullScreen;
-
-    [RelayCommand]
-    private void ExitFullScreen() => IsFullScreen = false;
-
-    [RelayCommand(CanExecute = nameof(HasItems))]
-    private void ToggleSlideshow()
-    {
-        if (IsSlideshowActive)
-        {
-            _slideshowTimer.Stop();
-            IsSlideshowActive = false;
-        }
-        else
-        {
-            _slideshowTimer.Interval = TimeSpan.FromSeconds(Math.Clamp(_settings.Settings.SlideshowIntervalSeconds, 1, 60));
-            _slideshowTimer.Start();
-            IsSlideshowActive = true;
-        }
-    }
-
-    // --- Сортировка ---
-
-    /// <summary>
-    /// Определить порядок галереи. Приоритет: ручной выбор пользователя для папки →
-    /// реальный порядок открытого окна Проводника → глобальная настройка.
-    /// Возвращает либо поле сортировки (sort), либо готовый порядок путей (order).
-    /// </summary>
-    private Task<(SortSpec sort, IReadOnlyList<string>? order)> ResolveOrderingAsync(string folder)
-    {
-        var key = string.IsNullOrEmpty(folder) ? null : folder.ToLowerInvariant().TrimEnd('\\', '/');
-        _currentFolderKey = key;
-
-        // 1) Явный выбор пользователя для этой папки — высший приоритет.
-        if (key != null && _settings.Settings.ManualFolderSorts.TryGetValue(key, out var manual) &&
-            TryParseSpec(manual, out var manualSpec))
-        {
-            AppLog.Write($"Сортировка (выбор пользователя): {manualSpec.Field}, убыв={manualSpec.Descending}");
-            return Task.FromResult<(SortSpec, IReadOnlyList<string>?)>((manualSpec, null));
-        }
-
-        // 2) Реальный порядок открытого окна Проводника — повторяет ЛЮБУЮ сортировку Windows.
-        // Shell COM требует STA; операция быстрая — вызываем синхронно из UI-потока.
-        if (_settings.Settings.MatchExplorerSort && !string.IsNullOrEmpty(folder))
-        {
-            if (ExplorerSortReader.TryGetOrderedPaths(folder, out var p) && p.Count > 0)
-            {
-                AppLog.Write($"Порядок из Проводника: {p.Count} файлов");
-                return Task.FromResult<(SortSpec, IReadOnlyList<string>?)>((default, p));
-            }
-        }
-
-        // 3) Глобальная настройка по умолчанию.
-        AppLog.Write($"Сортировка из настроек: {_settings.Settings.SortBy}, убыв={_settings.Settings.SortDescending}");
-        return Task.FromResult<(SortSpec, IReadOnlyList<string>?)>((new SortSpec(_settings.Settings.SortBy, _settings.Settings.SortDescending), null));
-    }
-
-    private void ReflectSort(SortSpec sort)
-    {
-        _suppressSortChange = true;
-        SelectedSortField = sort.Field;
-        SortDescending = sort.Descending;
-        _suppressSortChange = false;
-    }
-
-    partial void OnSelectedSortFieldChanged(SortField value)
-    {
-        if (!_suppressSortChange) PersistAndApplySort();
-    }
-
-    partial void OnSortDescendingChanged(bool value)
-    {
-        if (!_suppressSortChange) PersistAndApplySort();
-    }
-
-    [RelayCommand]
-    private void ToggleSortDirection() => SortDescending = !SortDescending;
-
-    private void PersistAndApplySort()
-    {
-        _settings.Settings.SortBy = SelectedSortField;
-        _settings.Settings.SortDescending = SortDescending;
-        // Запоминаем выбор пользователя для текущей папки — он перекрывает Проводник при след. открытии.
-        if (_currentFolderKey != null)
-            _settings.Settings.ManualFolderSorts[_currentFolderKey] = $"{SelectedSortField}:{SortDescending}";
-        _settings.SaveDebounced();
-        ApplySort();
-    }
-
-    private static bool TryParseSpec(string value, out SortSpec spec)
-    {
-        spec = default;
-        var parts = value.Split(':');
-        if (parts.Length == 2 && Enum.TryParse<SortField>(parts[0], out var f) && bool.TryParse(parts[1], out var d))
-        {
-            spec = new SortSpec(f, d);
-            return true;
-        }
-        return false;
-    }
-
-    private void ApplySort()
-    {
-        if (!_nav.HasItems) return;
-        var sorted = _library.Sort(_nav.Items, new SortSpec(SelectedSortField, SortDescending));
-        _nav.ReorderPreservingCurrent(sorted);
-    }
-
     // --- Реакция на изменения состояния ---
 
     private async void OnListChanged()
     {
         HasItems = _nav.HasItems;
         await ThumbnailStrip.SetItemsAsync(_nav.Items);
-        ThumbnailStrip.SetCurrent(_nav.Current); // сохранить подсветку (в т.ч. после пересортировки)
+        ThumbnailStrip.SetCurrent(_nav.Current);
         if (!HasItems && IsSlideshowActive)
         {
             _slideshowTimer.Stop();
@@ -499,7 +165,6 @@ public sealed partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowThumbnailStrip));
         OnPropertyChanged(nameof(ShowNavigation));
         OnPropertyChanged(nameof(ShowWindowNavArrows));
-        // Обновить видимость боковых кнопок перехода у текущего видео (список мог измениться).
         if (CurrentContent is VideoViewerViewModel video)
             video.ShowFileNavigation = _nav.Items.Count > 1;
         RefreshCommandStates();
@@ -510,7 +175,6 @@ public sealed partial class MainViewModel : ViewModelBase
         var old = CurrentContent;
         var cur = _nav.Current;
 
-        // Видео→видео: переиспользуем тот же плеер и окно — плавно, без рывков и нового окна.
         if (old is VideoViewerViewModel reusableVideo && cur is { IsVideo: true })
         {
             reusableVideo.SwitchTo(cur);
@@ -535,7 +199,7 @@ public sealed partial class MainViewModel : ViewModelBase
             _ = vm.LoadAsync();
             PreloadNeighbors();
         }
-        else // видео
+        else
         {
             var videoVm = _videoVmFactory(cur);
             videoVm.ShowFileNavigation = _nav.Items.Count > 1;
@@ -544,9 +208,6 @@ public sealed partial class MainViewModel : ViewModelBase
 
         CurrentContent = next;
 
-        // Освобождаем предыдущий контент (видео-плеер) после визуальной замены.
-        // Тип контента сменился (видео↔фото/пусто) → ContentControl сам пересоздаёт View,
-        // старый VideoViewerView выгружается и закрывает своё наложенное окно.
         if (old is IDisposable disposable && !ReferenceEquals(old, next))
             Application.Current?.Dispatcher.BeginInvoke(
                 new Action(disposable.Dispose), DispatcherPriority.Background);

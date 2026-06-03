@@ -98,15 +98,19 @@ Single-file ломает загрузку нативных плагинов LibV
   показывает `MainWindow`, применяет тему, разбирает аргументы, single-instance, интеграция с shell.
 - **`MainViewModel`** — главный оркестратор: открытие файлов/папок, навигация, удаление,
   полноэкранный режим, слайд-шоу, сортировка. Держит `CurrentContent` (объект-VM текущего экрана).
+  Реализован как `partial class` и разбит на 5 файлов:
+  `MainViewModel.Gallery.cs` (открытие, сортировка), `MainViewModel.Navigation.cs` (переключение),
+  `MainViewModel.Presentation.cs` (FullScreen, Slideshow), `MainViewModel.Deletion.cs` (Delete/Restore),
+  `MainViewModel.FileActions.cs` (проводник, свойства, буфер обмена).
 - **Контент-экраны** выбираются по типу VM в `CurrentContent`, отрисовываются `ContentControl`
   в `MainWindow.xaml` через неявные `DataTemplate` (тип VM → View):
   - `EmptyStateViewModel` → `EmptyStateView` (стартовый экран, когда ничего не открыто);
   - `ImageViewerViewModel` → `ImageViewerView` (фото/GIF);
   - `VideoViewerViewModel` → `VideoViewerView` (видео, оверлей поверх VLC).
 - **Сервисы** (все — singletons, см. `App.ConfigureServices`) с интерфейсами в
-  `Services/Abstractions/`: библиотека медиа, навигация, удаление, настройки, тема, кэш изображений,
-  декодирование, миниатюры, позиции видео, ассоциации файлов, shell-операции, провайдер LibVLC,
-  **уведомления** (`INotificationService`/`NotificationService`).
+  `Services/Abstractions/`: библиотека медиа, навигация, удаление (`IFileDeletionService` → `DeleteResult`),
+  настройки, тема, кэш изображений, декодирование, миниатюры, позиции видео, ассоциации файлов,
+  shell-операции, провайдер LibVLC, **уведомления** (`INotificationService`/`NotificationService`).
 - **DI-фабрики для дочерних VM.** `MainViewModel` не создаёт `ImageViewerViewModel` и
   `VideoViewerViewModel` напрямую через `new`, а получает `Func<MediaItem, ImageViewerViewModel>`
   и `Func<MediaItem, VideoViewerViewModel>` из контейнера (зарегистрированы в `App.ConfigureServices`).
@@ -124,7 +128,8 @@ src/Prosmotr/
   Models/                    — MediaItem, AppSettings, RecentEntry, перечисления (MediaType, SortField…)
   Services/                  — реализации сервисов
     Abstractions/            — интерфейсы сервисов (IxxxService)
-  ViewModels/                — по VM на экран + MainViewModel, ViewModelBase, Messages
+  ViewModels/                — по VM на экран + MainViewModel (partial: Gallery, Navigation,
+                               Presentation, Deletion, FileActions), ViewModelBase, Messages
   Views/                     — MainWindow, EmptyStateView, ImageViewerView, VideoViewerView,
                                ThumbnailStripView, SettingsWindow, FilePropertiesWindow (окно «Свойства»)
     Controls/ZoomBorder.cs   — кастомный контрол зума/панорамы для фото (см. подводные камни)
@@ -394,6 +399,32 @@ Magick.NET (конвертация в **BMP** в памяти — раньше �
   `DefaultPlaybackRate` помечены `[Range(...)]`. При загрузке `settings.json`
   `SettingsService.ValidateAndFix` сравнивает значения с атрибутами и заменяет невалидные
   на дефолтные (например, `"SeekStepSeconds": -5` → `5`).
+
+---
+
+### 5.15. Нюансы Фазы 3 (P3) — рефакторинг и техдолг
+
+- **`MainViewModel` разделён на partial-классы.** Код VM разбит на 5 файлов:
+  `MainViewModel.cs` (общее, DI, конструктор, `UpdateCurrentContent`, `RefreshCommandStates`),
+  `MainViewModel.Gallery.cs` (открытие, сортировка, Drag-and-Drop),
+  `MainViewModel.Navigation.cs` (Next/Previous),
+  `MainViewModel.Presentation.cs` (FullScreen, Slideshow),
+  `MainViewModel.Deletion.cs` (Delete, Restore, Undo-state),
+  `MainViewModel.FileActions.cs` (ShowInExplorer, CopyPath, Properties).
+  Source generators CommunityToolkit.Mvvm поддерживают `partial class` — `[ObservableProperty]`
+  и `[RelayCommand]` работают корректно во всех частях. Компилятор связывает partial methods
+  (`OnSelectedSortFieldChanged` и т.п.) независимо от того, в каком файле объявлено свойство,
+  а в каком — реализация.
+- **`IFileDeletionService` возвращает `DeleteResult`.** Вместо `Task<bool>` используется
+  `Task<DeleteResult>` где `DeleteResult` — `record` с `bool Success` и `string? ErrorMessage`.
+  Это позволяет `MainViewModel` самому решать, показывать ли тост, и с каким текстом.
+  `FileDeletionService` не отвечает за UI-уведомления.
+- **`FilePropertiesWindow` через DI.** Окно зарегистрировано как `transient` в контейнере,
+  получает `LibVlcProvider` в конструкторе, а `MediaItem` — через метод `Initialize` после
+  резолва из DI. `MainWindow.OpenProperties` больше не использует `new FilePropertiesWindow(...)`.
+- **`AutomationProperties.Name` на кнопках видео.** Все интерактивные кнопки `VideoViewerView`
+  (Play/Pause, Mute, Audio, Subtitles, Snapshot, Speed, FullScreen, боковые стрелки Prev/Next)
+  снабжены `AutomationProperties.Name` для корректной работы экранного диктора и accessibility.
 
 ---
 

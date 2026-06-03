@@ -49,12 +49,14 @@
                      управления — прячутся по таймеру одновременно с ней (видимостью управляет code-behind). -->
                 <Button x:Name="PrevFileButton" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="20,0,0,0"
                         Width="52" Height="52" Style="{StaticResource OverlayButton}" Click="OnPrevFileClick"
-                        Visibility="Collapsed" ToolTip="Предыдущий файл (←)">
+                        Visibility="Collapsed" ToolTip="Предыдущий файл (←)"
+                        AutomationProperties.Name="Предыдущий файл">
                     <ui:SymbolIcon Symbol="ChevronLeft24" FontSize="22" />
                 </Button>
                 <Button x:Name="NextFileButton" Grid.Row="0" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,20,0"
                         Width="52" Height="52" Style="{StaticResource OverlayButton}" Click="OnNextFileClick"
-                        Visibility="Collapsed" ToolTip="Следующий файл (→)">
+                        Visibility="Collapsed" ToolTip="Следующий файл (→)"
+                        AutomationProperties.Name="Следующий файл">
                     <ui:SymbolIcon Symbol="ChevronRight24" FontSize="22" />
                 </Button>
 
@@ -86,7 +88,8 @@
 
                         <!-- Play / Pause -->
                         <ui:Button Grid.Column="0" Appearance="Transparent" Command="{Binding TogglePlayCommand}"
-                                   ToolTip="Воспроизведение / пауза (Пробел)">
+                                   ToolTip="Воспроизведение / пауза (Пробел)"
+                                   AutomationProperties.Name="Воспроизведение / пауза">
                             <ui:SymbolIcon Foreground="White">
                                 <ui:SymbolIcon.Style>
                                     <Style TargetType="ui:SymbolIcon">
@@ -116,7 +119,8 @@
 
                         <!-- Mute -->
                         <ui:Button Grid.Column="4" Appearance="Transparent" Command="{Binding ToggleMuteCommand}"
-                                   ToolTip="Звук (M)">
+                                   ToolTip="Звук (M)"
+                                   AutomationProperties.Name="Звук">
                             <ui:SymbolIcon Foreground="White">
                                 <ui:SymbolIcon.Style>
                                     <Style TargetType="ui:SymbolIcon">
@@ -157,19 +161,22 @@
 
                         <!-- Аудиодорожка -->
                         <ui:Button x:Name="AudioButton" Grid.Column="7" Appearance="Transparent"
-                                   Click="OnAudioButtonClick" ToolTip="Аудиодорожка">
+                                   Click="OnAudioButtonClick" ToolTip="Аудиодорожка"
+                                   AutomationProperties.Name="Аудиодорожка">
                             <ui:SymbolIcon Symbol="MusicNote124" Foreground="White" />
                         </ui:Button>
 
                         <!-- Субтитры -->
                         <ui:Button x:Name="SubtitleButton" Grid.Column="8" Appearance="Transparent"
-                                   Click="OnSubtitleButtonClick" ToolTip="Субтитры">
+                                   Click="OnSubtitleButtonClick" ToolTip="Субтитры"
+                                   AutomationProperties.Name="Субтитры">
                             <ui:SymbolIcon Symbol="ClosedCaption24" Foreground="White" />
                         </ui:Button>
 
                         <!-- Снимок кадра -->
                         <ui:Button Grid.Column="9" Appearance="Transparent"
-                                   Command="{Binding TakeSnapshotCommand}" ToolTip="Сохранить кадр">
+                                   Command="{Binding TakeSnapshotCommand}" ToolTip="Сохранить кадр"
+                                   AutomationProperties.Name="Сохранить кадр">
                             <ui:SymbolIcon Symbol="Camera24" Foreground="White" />
                         </ui:Button>
 
@@ -177,13 +184,15 @@
                         <ui:Button x:Name="SpeedButton" Grid.Column="10" Appearance="Transparent"
                                    Foreground="White" Margin="8,0,2,0" MinWidth="64"
                                    Content="{Binding RateText}" Click="OnSpeedButtonClick"
-                                   ToolTip="Скорость воспроизведения ([ / ])">
+                                   ToolTip="Скорость воспроизведения ([ / ])"
+                                   AutomationProperties.Name="Скорость воспроизведения">
                             <ui:Button.Icon><ui:SymbolIcon Symbol="TopSpeed24" Foreground="White" /></ui:Button.Icon>
                         </ui:Button>
 
                         <!-- Полный экран -->
                         <ui:Button Grid.Column="11" Appearance="Transparent" Click="OnFullScreenClick"
-                                   ToolTip="Полный экран (F)">
+                                   ToolTip="Полный экран (F)"
+                                   AutomationProperties.Name="Полный экран">
                             <ui:SymbolIcon Symbol="FullScreenMaximize24" Foreground="White" />
                         </ui:Button>
                     </Grid>
