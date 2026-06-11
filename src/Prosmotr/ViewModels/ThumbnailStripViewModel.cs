@@ -36,9 +36,10 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase
             SelectionRequested?.Invoke(this, value.Item);
     }
 
-    public async Task SetItemsAsync(IReadOnlyList<MediaItem> items)
+    public async Task SetItemsAsync(IReadOnlyList<MediaItem> items, MediaItem? current = null)
     {
         _cts?.Cancel();
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
 
@@ -60,7 +61,7 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase
                 await Dispatcher.Yield(DispatcherPriority.Render);
         }
 
-        _ = LoadThumbnailsAsync(entries, ct);
+        _ = LoadThumbnailsAsync(entries, current, ct);
     }
 
     /// <summary>Подсветить миниатюру текущего файла без срабатывания навигации.</summary>
@@ -85,7 +86,7 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase
         }
     }
 
-    private async Task LoadThumbnailsAsync(List<ThumbnailEntry> entries, CancellationToken ct)
+    private async Task LoadThumbnailsAsync(List<ThumbnailEntry> entries, MediaItem? priority, CancellationToken ct)
     {
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher == null) return;
@@ -98,9 +99,27 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase
             _thumbBatchTimer.Start();
         });
 
+        // Сначала миниатюра текущего файла — чтобы пользователь сразу видел, куда попал.
+        if (priority != null)
+        {
+            var priorityEntry = entries.FirstOrDefault(e =>
+                string.Equals(e.Item.FullPath, priority.FullPath, StringComparison.OrdinalIgnoreCase));
+            if (priorityEntry != null)
+            {
+                try
+                {
+                    var img = await _thumbs.GetThumbnailAsync(priorityEntry.Item, ThumbSize, ct).ConfigureAwait(false);
+                    if (img != null && !ct.IsCancellationRequested)
+                        _thumbQueue.Enqueue((priorityEntry, img));
+                }
+                catch (OperationCanceledException) { }
+                catch { /* игнорируем */ }
+            }
+        }
+
         var options = new ParallelOptions
         {
-            MaxDegreeOfParallelism = Math.Max(2, Environment.ProcessorCount / 2),
+            MaxDegreeOfParallelism = Math.Max(2, Environment.ProcessorCount / 4),
             CancellationToken = ct
         };
 

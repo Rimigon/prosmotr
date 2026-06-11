@@ -100,8 +100,20 @@ public sealed class VideoPlaybackService : IDisposable
     public bool SetSubtitle(int id) => Player.SetSpu(id);
 
     /// <summary>Подключить внешний файл субтитров (.srt/.ass/…) и при необходимости включить его.</summary>
-    public bool AddSubtitleFile(string path, bool select) =>
-        Player.AddSlave(MediaSlaveType.Subtitle, new Uri(path).AbsoluteUri, select);
+    public bool AddSubtitleFile(string path, bool select)
+    {
+        Uri uri;
+        try
+        {
+            uri = new Uri(path, UriKind.Absolute);
+        }
+        catch (UriFormatException)
+        {
+            var builder = new UriBuilder { Scheme = Uri.UriSchemeFile, Path = path };
+            uri = builder.Uri;
+        }
+        return Player.AddSlave(MediaSlaveType.Subtitle, uri.AbsoluteUri, select);
+    }
 
     /// <summary>Сохранить текущий кадр в файл (исходный размер). true — запрос принят.</summary>
     public bool TakeSnapshot(string path) => Player.TakeSnapshot(0, path, 0, 0);

@@ -120,7 +120,17 @@ public sealed partial class FilePropertiesViewModel : ViewModelBase
     {
         try
         {
-            using var media = new Media(_vlc.LibVlc, new Uri(_item.FullPath));
+            Uri uri;
+            try
+            {
+                uri = new Uri(_item.FullPath, UriKind.Absolute);
+            }
+            catch (UriFormatException)
+            {
+                var builder = new UriBuilder { Scheme = Uri.UriSchemeFile, Path = _item.FullPath };
+                uri = builder.Uri;
+            }
+            using var media = new Media(_vlc.LibVlc, uri);
             await media.Parse(MediaParseOptions.ParseLocal, timeout: 5000);
 
             if (_durationRow != null)

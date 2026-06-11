@@ -21,8 +21,17 @@ public sealed class NotificationService : INotificationService
     {
         var app = Application.Current;
         if (app == null || app.Dispatcher.CheckAccess())
+        {
             Requested?.Invoke(this, request);
-        else
+            return;
+        }
+        try
+        {
             app.Dispatcher.BeginInvoke(new Action(() => Requested?.Invoke(this, request)));
+        }
+        catch (InvalidOperationException)
+        {
+            // Dispatcher shutting down — игнорируем
+        }
     }
 }

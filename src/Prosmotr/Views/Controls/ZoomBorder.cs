@@ -56,16 +56,21 @@ public class ZoomBorder : Border
         set
         {
             if (_child != null)
-                _child.SizeChanged -= OnChildSizeChanged;
-
-            if (value != null && !ReferenceEquals(value, base.Child))
             {
-                var group = new TransformGroup();
-                group.Children.Add(_scale);
-                group.Children.Add(_translate);
-                value.RenderTransform = group;
-                value.RenderTransformOrigin = new Point(0, 0);
+                _child.SizeChanged -= OnChildSizeChanged;
+                _child = null;
+            }
 
+            if (value != null)
+            {
+                if (!ReferenceEquals(value, base.Child))
+                {
+                    var group = new TransformGroup();
+                    group.Children.Add(_scale);
+                    group.Children.Add(_translate);
+                    value.RenderTransform = group;
+                    value.RenderTransformOrigin = new Point(0, 0);
+                }
                 _child = value as FrameworkElement;
                 if (_child != null)
                     _child.SizeChanged += OnChildSizeChanged;

@@ -19,6 +19,15 @@
                  Background="{DynamicResource AppCanvasBrush}"
                  AllowDrop="True">
 
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type vm:ImageViewerViewModel}">
+            <views:ImageViewerView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:VideoViewerViewModel}">
+            <views:VideoViewerView />
+        </DataTemplate>
+    </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />

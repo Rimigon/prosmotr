@@ -58,7 +58,15 @@ public sealed class PlaybackPositionStore : IPlaybackPositionStore, IDisposable
     {
         lock (_gate)
         {
-            try { File.WriteAllText(_file, JsonSerializer.Serialize(_map)); }
+            try
+            {
+                var tmp = _file + ".tmp";
+                File.WriteAllText(tmp, JsonSerializer.Serialize(_map));
+                if (File.Exists(_file))
+                    File.Replace(tmp, _file, null);
+                else
+                    File.Move(tmp, _file);
+            }
             catch { /* не критично */ }
         }
     }

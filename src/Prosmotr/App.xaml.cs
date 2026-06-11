@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Threading;
@@ -28,6 +29,15 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Splash screen: показываем мгновенно, пока грузятся сборки / DI / LibVLC.
+        SplashScreen? splash = null;
+        try
+        {
+            splash = new SplashScreen("Resources/Icons/app.ico");
+            splash.Show(true); // auto-close при активации первого окна
+        }
+        catch { /* если иконка не подходит — работаем без splash */ }
+
         base.OnStartup(e);
 
         // Single-instance: если приложение уже запущено — передаём путь ему и выходим.
@@ -63,14 +73,33 @@ public partial class App : Application
 
             MainWindow = window;
             window.Show(); // показываем первым, чтобы существовал HWND для Mica/слежения за темой
+            splash?.Close(TimeSpan.FromSeconds(0)); // явно убираем splash (на всякий случай)
 
             theme.Initialize(window);
             theme.Apply(settings.Settings.Theme);
 
             var vm = Services.GetRequiredService<MainViewModel>();
-            _ = vm.InitializeAsync(e.Args);
 
-            TryIntegrateShell();
+            // LibVLC warmup: генерируем plugins.dat если отсутствует, и создаём LibVLC в фоне.
+            // Без кэша libvlc_new() сканирует всю папку plugins\ — 3–8 с задержки.
+            var libvlcWarmup = Task.Run(() => LibVlcProvider.Warmup());
+
+            var startupSw = Stopwatch.StartNew();
+            // Ждём LibVLC в фоне перед открытием любого файла, иначе UI заблокируется
+            // на время первого сканирования plugins\ при холодном старте.
+            libvlcWarmup.ContinueWith(_ =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    _ = vm.InitializeAsync(e.Args).ContinueWith(t =>
+                    {
+                        AppLog.Write($"[Perf] Startup+open: {startupSw.ElapsedMilliseconds} ms");
+                    }, TaskScheduler.Default);
+                });
+            }, TaskScheduler.Default);
+
+            // Shell-интеграцию уводим в фон — реестр на холодной системе может подвисать.
+            _ = Task.Run(TryIntegrateShell);
         }
         catch (Exception ex)
         {

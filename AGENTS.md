@@ -521,6 +521,67 @@ Magick.NET (конвертация в **BMP** в памяти — раньше �
 - **Видео: кнопка clone не через `RelativeSource AncestorType=Window`.** Из-за airspace LibVLCSharp.WPF `AncestorType=Window` в XAML найдёт `ForegroundWindow`, а не `MainWindow`. Поэтому в `VideoViewerView` видимостью и кликом кнопки управляет code-behind через `_mainVm` (кэшированный в `OnLoaded`). Все клики логируются в `app.log`. Для фото такой проблемы нет — биндинг через `RelativeSource AncestorType=Window` работает.
 - **Диагностика.** Все операции clone/extend логируются с префиксом `[Clone]` в `app.log`. Если функционал не работает — первым делом смотреть `%LOCALAPPDATA%\Prosmotr\app.log`.
 
+### 5.17. Оптимизации холодного старта (SplashScreen, Composite R2R, ленивые DataTemplate'ы)
+
+При первом запуске после перезагрузки Windows (холодный старт) приложение может стартовать
+медленнее (~10 с), чем при последующих запусках (~1 с). Основные причины: JIT-компиляция,
+загрузка нативных DLL (LibVLC, Magick.NET), парсинг тяжёлого XAML, I/O реестра.
+
+**Внесённые оптимизации:**
+
+1. **SplashScreen (`System.Windows.SplashScreen`)** — `App.xaml.cs`: показывает `app.ico`
+   мгновенно, ещё до инициализации DI и LibVLC. Закрывается автоматически при активации
+   `MainWindow` (или явно через `splash.Close(...)`).
+2. **Composite ReadyToRun** — в `Prosmotr.csproj` включён `<PublishReadyToRunComposite>true`.
+   При публикации (`dotnet publish -c Release -o app`) создаётся единый нативный образ,
+   уменьшающий количество page faults и остаточной JIT при холодном старте.
+3. **Ленивые DataTemplate'ы** — тяжёлые шаблоны `ImageViewerView` и `VideoViewerView`
+   (последний тянет `LibVLCSharp.WPF`) убраны из `AppResources.xaml` и перенесены в
+   `<Window.Resources>` `MainWindow.xaml`. `EmptyStateView` (лёгкий) оставлен в `App.xaml`,
+   т.к. стартовый экран нужен сразу. Таким образом парсинг `VideoViewerView.xaml` откладывается
+   до момента, когда основное окно уже на экране.
+4. **Фоновая shell-интеграция** — `TryIntegrateShell()` теперь выполняется через
+   `Task.Run(TryIntegrateShell)`, чтобы синхронные операции с реестром не блокировали UI-поток.
+
+**Что НЕ поможет (не делать):**
+- `PublishSingleFile` — **запрещён**, ломает загрузку нативных плагинов LibVLC.
+- Self-contained publish — увеличивает размер и не ускоряет старт.
+- Trimming (ILLink) — несовместим с WPF-рефлексией и XAML.
+
+---
+
+### 5.18. Защита от краевых случаев (Edge-case hardening)
+
+Итерация исправлений, направленных на устойчивость при «пограничных» сценариях:
+
+- **`UriFormatException` в путях с `#`/`%`.** `new Uri(path, UriKind.Absolute)` выбрасывает
+  `UriFormatException` для путей, содержащих `#` или неэкранированный `%`. Это затронуло
+  `VideoPlaybackService.AddSubtitleFile`, `ImageViewerViewModel.AnimatedSource` (XamlAnimatedGif)
+  и `FilePropertiesViewModel.LoadVideoInfoAsync`. Везде добавлен fallback через `UriBuilder`
+  (схема `file`, путь as-is) — тот же паттерн, что уже использовался в `VideoPlaybackService.Load`.
+- **Утечки `CancellationTokenSource`.** `MainViewModel._openCts`, `ThumbnailStripViewModel._cts`,
+  `ImageViewerViewModel._cts` создавались при каждой новой операции, но старые экземпляры
+  не освобождались. Добавлен `_cts?.Dispose()` перед созданием нового.
+- **`ZoomBorder.Child` setter терял `SizeChanged`.** При повторном назначении того же `Image`
+  (переиспользование View) подписка на `SizeChanged` сбрасывалась и не восстанавливалась,
+  потому что `ReferenceEquals` блокировал весь блок. Исправлено: отписка от старого child,
+  затем подписка на новый всегда, независимо от `ReferenceEquals`.
+- **Атомарная запись `PlaybackPositionStore.Flush`.** `positions.json` писался напрямую;
+  при аварийном завершении процесса файл мог обрезаться. Теперь: `tmp` → `File.Replace`
+  (или `File.Move`), как у `SettingsService`.
+- **Shutdown race в `NotificationService.Raise` и `VideoViewerViewModel.OnUi`.**
+  `Dispatcher.BeginInvoke` может выбросить `InvalidOperationException`, если `Dispatcher`
+  уже shutting down. Добавлен `try/catch` — события при закрытии приложения игнорируются.
+- **`RecycleBinRestore.RunStaAsync` — `RunContinuationsAsynchronously`.** Без этого флага
+  продолжение `TaskCompletionSource` могло выполняться на STA-потоке и вызывать deadlock.
+- **`MainViewModel.OnListChanged` — защита `async void`.** Необработанное исключение в
+  `async void` убивало процесс через `DispatcherUnhandledException`. Тело обёрнуто в
+  `try/catch` с маршрутизацией в `AppLog`.
+- **`ResolveOrderingAsync` — `ExplorerSortReader` fault.** `Task.Run(() =>
+  ExplorerSortReader.TryGetOrderedPaths(...))` мог fault, если COM Explorer выбросил.
+  Необработанный faulted task приводил к краху `OpenPathAsync`. Обёрнуто в `try/catch`,
+  возвращаем `null` при ошибке.
+
 ---
 
 ## 6. Соглашения по работе (важно)

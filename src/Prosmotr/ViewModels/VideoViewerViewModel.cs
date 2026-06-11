@@ -370,8 +370,9 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     {
         var app = Application.Current;
         if (app == null) { action(); return; }
-        if (app.Dispatcher.CheckAccess()) action();
-        else app.Dispatcher.BeginInvoke(action);
+        if (app.Dispatcher.CheckAccess()) { action(); return; }
+        try { app.Dispatcher.BeginInvoke(action); }
+        catch (InvalidOperationException) { /* Dispatcher shutting down — игнорируем */ }
     }
 
     public void Dispose()

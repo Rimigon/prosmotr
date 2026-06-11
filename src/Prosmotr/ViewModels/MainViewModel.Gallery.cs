@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using CommunityToolkit.Mvvm.Input;
 using Prosmotr.Infrastructure;
@@ -32,7 +33,9 @@ public sealed partial class MainViewModel
     /// <summary>Открыть путь (файл или папку), построить галерею и перейти к нему.</summary>
     public async Task OpenPathAsync(string path)
     {
+        var sw = Stopwatch.StartNew();
         _openCts?.Cancel();
+        _openCts?.Dispose();
         _openCts = new CancellationTokenSource();
         var ct = _openCts.Token;
 
@@ -71,6 +74,7 @@ public sealed partial class MainViewModel
 
             ClearUndoState(); // открыли другую галерею — отмена прежнего удаления неактуальна
             _nav.SetItems(result.Items, result.StartIndex);
+            AppLog.Write($"[Perf] OpenPathAsync total ({Path.GetFileName(path)}): {sw.ElapsedMilliseconds} ms");
         }
         catch (Exception ex)
         {
@@ -94,6 +98,7 @@ public sealed partial class MainViewModel
     /// </summary>
     private async Task<(SortSpec sort, IReadOnlyList<string>? order)> ResolveOrderingAsync(string folder)
     {
+        var sw = Stopwatch.StartNew();
         var key = string.IsNullOrEmpty(folder) ? null : folder.ToLowerInvariant().TrimEnd('\\', '/');
         _currentFolderKey = key;
 
@@ -101,27 +106,39 @@ public sealed partial class MainViewModel
         if (key != null && _settings.Settings.ManualFolderSorts.TryGetValue(key, out var manual) &&
             TryParseSpec(manual, out var manualSpec))
         {
-            AppLog.Write($"Сортировка (выбор пользователя): {manualSpec.Field}, убыв={manualSpec.Descending}");
+            AppLog.Write($"[Perf] Sort resolve (manual): {sw.ElapsedMilliseconds} ms");
             return (manualSpec, null);
         }
 
         // 2) Реальный порядок открытого окна Проводника — повторяет ЛЮБУЮ сортировку Windows.
         if (_settings.Settings.MatchExplorerSort && !string.IsNullOrEmpty(folder))
         {
-            var ordered = await Task.Run(() =>
+            var explorerTask = Task.Run(() =>
             {
-                ExplorerSortReader.TryGetOrderedPaths(folder, out var list);
-                return list;
+                try
+                {
+                    ExplorerSortReader.TryGetOrderedPaths(folder, out var list);
+                    return list;
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Error("ResolveOrderingAsync explorer sort", ex);
+                    return (List<string>?)null;
+                }
             });
+            var ordered = await Task.WhenAny(explorerTask, Task.Delay(3000)) == explorerTask
+                ? await explorerTask
+                : null;
             if (ordered is { Count: > 0 })
             {
-                AppLog.Write($"Порядок из Проводника: {ordered.Count} файлов");
+                AppLog.Write($"[Perf] Sort resolve (explorer, {ordered.Count} items): {sw.ElapsedMilliseconds} ms");
                 return (default, ordered);
             }
+            AppLog.Write($"[Perf] Sort resolve (explorer timeout/fallback): {sw.ElapsedMilliseconds} ms");
         }
 
         // 3) Глобальная настройка по умолчанию.
-        AppLog.Write($"Сортировка из настроек: {_settings.Settings.SortBy}, убыв={_settings.Settings.SortDescending}");
+        AppLog.Write($"[Perf] Sort resolve (settings): {sw.ElapsedMilliseconds} ms");
         return (new SortSpec(_settings.Settings.SortBy, _settings.Settings.SortDescending), null);
     }
 

@@ -61,17 +61,12 @@
     <conv:SortFieldToStringConverter x:Key="SortFieldToString" />
     <conv:EqualityConverter x:Key="Equality" />
 
-    <!-- Сопоставление ViewModel → View (автоприменяется через ContentControl) -->
+    <!-- Сопоставление ViewModel → View (автоприменяется через ContentControl).
+         Тяжёлые шаблоны Image/Video убраны отсюда и добавлены в MainWindow.Resources,
+         чтобы не тормозить загрузку App.xaml при холодном старте.
+         EmptyState лёгкий и нужен сразу — оставляем. -->
     <DataTemplate DataType="{x:Type vm:EmptyStateViewModel}">
         <views:EmptyStateView />
-    </DataTemplate>
-
-    <DataTemplate DataType="{x:Type vm:ImageViewerViewModel}">
-        <views:ImageViewerView />
-    </DataTemplate>
-
-    <DataTemplate DataType="{x:Type vm:VideoViewerViewModel}">
-        <views:VideoViewerView />
     </DataTemplate>
 
 </ResourceDictionary>

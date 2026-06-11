@@ -22,6 +22,10 @@
     <Version>1.0.0</Version>
 
     <!-- ВАЖНО: single-file publish ломает нативные плагины LibVLC, поэтому не включаем. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <!-- Композитный R2R: один большой нативный образ вместо множества мелких —
+         меньше page faults и остаточной JIT при холодном старте. -->
+    <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
     <SatelliteResourceLanguages>en;ru</SatelliteResourceLanguages>
   </PropertyGroup>
 

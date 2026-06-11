@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
@@ -170,24 +171,32 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     private async void OnListChanged()
     {
-        HasItems = _nav.HasItems;
-        await ThumbnailStrip.SetItemsAsync(_nav.Items);
-        ThumbnailStrip.SetCurrent(_nav.Current);
-        if (!HasItems && IsSlideshowActive)
+        try
         {
-            _slideshowTimer.Stop();
-            IsSlideshowActive = false;
+            HasItems = _nav.HasItems;
+            await ThumbnailStrip.SetItemsAsync(_nav.Items, _nav.Current);
+            ThumbnailStrip.SetCurrent(_nav.Current);
+            if (!HasItems && IsSlideshowActive)
+            {
+                _slideshowTimer.Stop();
+                IsSlideshowActive = false;
+            }
+            OnPropertyChanged(nameof(ShowThumbnailStrip));
+            OnPropertyChanged(nameof(ShowNavigation));
+            OnPropertyChanged(nameof(ShowWindowNavArrows));
+            if (CurrentContent is VideoViewerViewModel video)
+                video.ShowFileNavigation = _nav.Items.Count > 1;
+            RefreshCommandStates();
         }
-        OnPropertyChanged(nameof(ShowThumbnailStrip));
-        OnPropertyChanged(nameof(ShowNavigation));
-        OnPropertyChanged(nameof(ShowWindowNavArrows));
-        if (CurrentContent is VideoViewerViewModel video)
-            video.ShowFileNavigation = _nav.Items.Count > 1;
-        RefreshCommandStates();
+        catch (Exception ex)
+        {
+            AppLog.Error("MainViewModel.OnListChanged", ex);
+        }
     }
 
     private void UpdateCurrentContent()
     {
+        var sw = Stopwatch.StartNew();
         var old = CurrentContent;
         var cur = _nav.Current;
 
@@ -231,6 +240,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ThumbnailStrip.SetCurrent(cur);
         UpdateStatus();
         RefreshCommandStates();
+        AppLog.Write($"[Perf] UpdateCurrentContent ({cur?.FileName}): {sw.ElapsedMilliseconds} ms");
     }
 
     private void PreloadNeighbors()

@@ -129,7 +129,7 @@ public static class RecycleBinRestore
 
     private static Task<bool> RunStaAsync(Func<bool> work)
     {
-        var tcs = new TaskCompletionSource<bool>();
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
             try { tcs.SetResult(work()); }

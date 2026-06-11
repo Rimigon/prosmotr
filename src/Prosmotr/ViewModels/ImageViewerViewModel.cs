@@ -21,7 +21,19 @@ public sealed partial class ImageViewerViewModel : ViewModelBase, IDisposable
 
     public MediaItem Item { get; }
     public bool IsAnimated => Item.IsAnimated;
-    public Uri? AnimatedSource => IsAnimated ? new Uri(Item.FullPath) : null;
+    public Uri? AnimatedSource
+    {
+        get
+        {
+            if (!IsAnimated) return null;
+            try { return new Uri(Item.FullPath, UriKind.Absolute); }
+            catch (UriFormatException)
+            {
+                var builder = new UriBuilder { Scheme = Uri.UriSchemeFile, Path = Item.FullPath };
+                return builder.Uri;
+            }
+        }
+    }
 
     [ObservableProperty] private ImageSource? _image;
     [ObservableProperty] private bool _isLoading;
@@ -86,6 +98,7 @@ public sealed partial class ImageViewerViewModel : ViewModelBase, IDisposable
         }
 
         _cts?.Cancel();
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
 
