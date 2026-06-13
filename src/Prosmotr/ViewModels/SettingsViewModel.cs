@@ -147,10 +147,13 @@ public sealed partial class SettingsViewModel : ViewModelBase
     partial void OnShowDeleteNotificationChanged(bool value) => Commit();
     partial void OnOpenLastOnStartupChanged(bool value) => Commit();
     partial void OnClearRecentOnStartupChanged(bool value) => Commit();
-    partial void OnShowThumbnailsChanged(bool value) => Commit();
-    partial void OnThumbnailStripPositionChanged(ThumbnailStripPosition value) => Commit();
+    // immediate: true для «живых» настроек — Save() поднимает SettingsChanged, и MainViewModel
+    // применяет их сразу (показ/положение ленты, интервал слайд-шоу). SaveDebounced событие НЕ
+    // поднимает (тихий путь для частых volume/recent), поэтому эти изменения иначе не применялись бы.
+    partial void OnShowThumbnailsChanged(bool value) => Commit(immediate: true);
+    partial void OnThumbnailStripPositionChanged(ThumbnailStripPosition value) => Commit(immediate: true);
     partial void OnAutoHideControlsChanged(bool value) => Commit();
-    partial void OnSlideshowIntervalSecondsChanged(int value) => Commit();
+    partial void OnSlideshowIntervalSecondsChanged(int value) => Commit(immediate: true);
     partial void OnSeekStepSecondsChanged(int value) => Commit();
     partial void OnFrameByFrameSeekChanged(bool value) => Commit();
     partial void OnMatchExplorerSortChanged(bool value) => Commit();

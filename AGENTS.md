@@ -881,6 +881,22 @@ Severity по циклам: …→2H(ц5)→1M+2L(ц6) — пик пройден
 Циклы 1-7 P5: **37 подтверждённых фиксов** + ToastView-guard. Тесты: 90 (добавлены `IndexOf`).
 Severity: цикл 5 (2H) → 6 (1M+2L) → 7 (2H) — свип ещё находит значимое (глубокие async/disposal-гонки).
 
+### 5.28. Оркестрированный аудит P5 (цикл 8) — живое применение настроек
+
+Восьмой цикл. Подтверждён и исправлен 1 дефект (HIGH):
+
+- **Настройки интерфейса не применялись вживую.** `SettingsChanged` поднимается только из
+  `ISettingsService.Save()`, а `SaveDebounced()` (тихий путь для частых volume/recent) — нет.
+  `OnShowThumbnailsChanged`/`OnThumbnailStripPositionChanged`/`OnSlideshowIntervalSecondsChanged`
+  шли через `Commit()`→`SaveDebounced()`, поэтому `MainViewModel.OnSettingsChanged` (подписан на
+  `SettingsChanged`) не вызывался: выключение «Показывать миниатюры», смена положения ленты и
+  интервала слайд-шоу не применялись до следующего `ListChanged`/смены темы/перезапуска. Помечены
+  `Commit(immediate: true)` (как тема) — `Save()` поднимает `SettingsChanged` синхронно на UI-потоке.
+  `AutoHideControls` остаётся debounced (читается «на лету» в таймерах, событие не нужно).
+
+Циклы 1-8 P5: **38 подтверждённых фиксов** + ToastView-guard. Тесты: 90 зелёных.
+Подтверждённых по циклам: 10→11→0→5→4→3→3→1 — отчётливый тренд к затуханию.
+
 ---
 
 ## 6. Соглашения по работе (важно)
