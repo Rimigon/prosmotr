@@ -36,12 +36,14 @@ public sealed partial class MainViewModel
                 if (!confirmed) return;
             }
 
-            var index = _nav.CurrentIndex;
             var result = await _deletion.DeleteAsync(cur.FullPath, permanent);
             if (result.Success)
             {
-                _nav.RemoveAt(index); // удаляем по зафиксированному индексу, а не по текущему —
-                                      // иначе во время await пользователь мог сменить файл стрелками
+                // Индекс берём ПО cur, а не _nav.CurrentIndex: пока висел диалог подтверждения
+                // (ConfirmAsync не блокирует помпу) или шло удаление, пользователь мог сменить
+                // файл стрелками/миниатюрой. Иначе удалили бы из списка не тот элемент, что с диска.
+                var index = _nav.IndexOf(cur);
+                if (index >= 0) _nav.RemoveAt(index);
                 // Remove ПОСЛЕ RemoveAt: переключение на следующий файл (SwitchTo) или disposal
                 // старого плеера синхронно вызывает SavePosition для удаляемого файла, что
                 // воссоздало бы его resume-запись. Чистим её после.
@@ -59,7 +61,7 @@ public sealed partial class MainViewModel
                     // Запоминаем для отмены. Восстановить можно кнопкой на панели,
                     // а при включённой плашке — ещё и кнопкой «Отменить» в самом тосте.
                     _lastDeletedItem = cur;
-                    _lastDeletedIndex = index;
+                    _lastDeletedIndex = index >= 0 ? index : 0;
                     RestoreLastDeleteCommand.NotifyCanExecuteChanged();
                     if (notify)
                         _notify.Show($"«{cur.FileName}» перемещён в корзину.", NotificationKind.Success,

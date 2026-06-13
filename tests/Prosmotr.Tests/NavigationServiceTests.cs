@@ -124,6 +124,20 @@ public sealed class NavigationServiceTests
     }
 
     [Fact]
+    public void IndexOf_FindsByPath_CaseInsensitive()
+    {
+        var nav = WithItems(0, "a.jpg", "b.jpg", "c.jpg");
+        Assert.Equal(1, nav.IndexOf(new MediaItem(@"C:\photos\B.JPG", MediaType.Image)));
+    }
+
+    [Fact]
+    public void IndexOf_NotFound_ReturnsMinusOne()
+    {
+        var nav = WithItems(0, "a.jpg", "b.jpg");
+        Assert.Equal(-1, nav.IndexOf(Item("zzz.jpg")));
+    }
+
+    [Fact]
     public void MoveTo_ByItemPath_IsCaseInsensitive()
     {
         var nav = WithItems(0, "a.jpg", "b.jpg");

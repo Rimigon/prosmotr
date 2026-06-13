@@ -332,6 +332,10 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
     private void OnPlaying(object? sender, EventArgs e) => OnUi(() =>
     {
+        // BeginInvoke мог поставить эту лямбду в очередь до Dispose; отписка не отменяет
+        // уже поставленное. Без guard'а ниже мы бы писали Rate/Volume/Mute в уже уничтоженный
+        // нативный MediaPlayer → AccessViolation. (как в OnTimeChanged/OnLengthChanged)
+        if (_disposed) return;
         IsPlaying = true;
         IsEnded = false;
         _switching = false; // новое видео реально стартовало — снимаем подавление SavePosition
@@ -343,12 +347,13 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         _playback.Mute = IsMuted;
     });
 
-    private void OnPaused(object? sender, EventArgs e) => OnUi(() => { IsPlaying = false; SavePosition(); });
-    private void OnStopped(object? sender, EventArgs e) => OnUi(() => { IsPlaying = false; SavePosition(); });
-    private void OnError(object? sender, EventArgs e) => OnUi(() => { HasError = true; IsPlaying = false; });
+    private void OnPaused(object? sender, EventArgs e) => OnUi(() => { if (_disposed) return; IsPlaying = false; SavePosition(); });
+    private void OnStopped(object? sender, EventArgs e) => OnUi(() => { if (_disposed) return; IsPlaying = false; SavePosition(); });
+    private void OnError(object? sender, EventArgs e) => OnUi(() => { if (_disposed) return; HasError = true; IsPlaying = false; });
 
     private void OnEndReached(object? sender, EventArgs e) => OnUi(() =>
     {
+        if (_disposed) return;
         IsPlaying = false;
         IsEnded = true;
         PositionMs = LengthMs;

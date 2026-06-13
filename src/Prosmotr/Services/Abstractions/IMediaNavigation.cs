@@ -45,6 +45,10 @@ public interface INavigationService
     void MoveTo(int index);
     void MoveTo(MediaItem item);
 
+    /// <summary>Индекс элемента (по ссылке или пути), либо -1. Для согласованного удаления:
+    /// удалять надо именно тот элемент, что удалён с диска, а не текущий (мог смениться навигацией).</summary>
+    int IndexOf(MediaItem item);
+
     /// <summary>Удалить текущий из списка и перейти к следующему (или предыдущему, или в пустое состояние).</summary>
     void RemoveCurrent();
 

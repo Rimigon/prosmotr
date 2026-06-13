@@ -50,12 +50,11 @@ public sealed class NavigationService : INavigationService
         CurrentChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public void MoveTo(MediaItem item)
-    {
-        var idx = _items.FindIndex(i => ReferenceEquals(i, item) ||
+    public void MoveTo(MediaItem item) => MoveTo(IndexOf(item));
+
+    public int IndexOf(MediaItem item) =>
+        _items.FindIndex(i => ReferenceEquals(i, item) ||
             string.Equals(i.FullPath, item.FullPath, StringComparison.OrdinalIgnoreCase));
-        MoveTo(idx);
-    }
 
     public void RemoveCurrent()
     {

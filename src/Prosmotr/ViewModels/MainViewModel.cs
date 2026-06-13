@@ -67,8 +67,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public bool ShowThumbnailStrip =>
         _settings.Settings.ShowThumbnails && HasItems && !IsFullScreen;
 
-    public bool ShowNavigation => _nav.Items.Count > 1;
-
     /// <summary>Боковые стрелки главного окна: только для фото/пустого экрана.
     /// У видео свои стрелки в оверлее (поверх airspace VLC), поэтому окошные тут прятать —
     /// иначе над видео получаются две стрелки на сторону, и «оконная» не ловит клики.</summary>
@@ -182,7 +180,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 IsSlideshowActive = false;
             }
             OnPropertyChanged(nameof(ShowThumbnailStrip));
-            OnPropertyChanged(nameof(ShowNavigation));
             OnPropertyChanged(nameof(ShowWindowNavArrows));
             if (CurrentContent is VideoViewerViewModel video)
                 video.ShowFileNavigation = _nav.Items.Count > 1;
