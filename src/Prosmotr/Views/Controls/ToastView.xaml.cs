@@ -61,6 +61,9 @@ public partial class ToastView : UserControl
 
     private void DequeueAndShow()
     {
+        // Контрол мог выгрузиться (напр. ушли с видео) пока шла анимация Hide —
+        // её Completed не должен перезапускать таймер/анимацию на мёртвом контроле.
+        if (!IsLoaded) return;
         if (_showing || _queue.Count == 0) return;
         var request = _queue.Dequeue();
         _showing = true;
