@@ -810,6 +810,33 @@ architecture). Подтверждено и исправлено 11 дефект�
 
 Циклы 1-4 P5 суммарно: **27 подтверждённых фиксов** + 1 lifecycle-guard. Тесты: 85 зелёных.
 
+### 5.25. Оркестрированный аудит P5 (цикл 5) — кэш-когерентность, UI-I/O, init-порядок
+
+Пятый цикл (полный свип). Подтверждено и исправлено 4 дефекта:
+
+- **Поворот не виден после сохранения (кэш-когерентность).** После `SaveRotationAsync`
+  перезаписывал файл, но `LoadAsync` через `_cache.TryGetLoaded` отдавал СТАРУЮ (неповёрнутую)
+  копию из singleton `ImageCache` — поворот «исчезал» в UI, хотя на диске файл корректный.
+  Добавлен `IImageCache.Invalidate(path)` (→ приватный `RemoveEntry` под `_gate`), вызывается
+  в `SaveRotationAsync` сразу после `File.Move`. Покрыто `ImageCacheTests`.
+- **Синхронный файловый I/O на UI-потоке при навигации.** Диагностические `[Perf]`-логи
+  (`AppLog.Write`) в `UpdateCurrentContent` (КАЖДАЯ навигация) и `OpenPathAsync`/`ResolveOrderingAsync`
+  (каждое открытие) делали `File.AppendAllText` под глобальным lock прямо на UI-потоке.
+  Удалены (это была временная инструментовка фаз оптимизации; стартовые `[Perf]`-логи в
+  `App`/`LibVlcProvider`, срабатывающие однократно, оставлены).
+- **`LibVlcProvider.Warmup` создавал LibVLC до `Core.Initialize()`** на первом холодном старте
+  (ветка генерации `plugins.dat` вне lock). `Core.Initialize()` настраивает путь к нативным
+  `libvlc\win-x64\`. Добавлен вызов `EnsureCoreInitialized()` в начале `Warmup`;
+  `EnsureCoreInitialized` сделан lock-safe (re-entrant через `_gate`).
+- **`OpenPathAsync` применял побочные эффекты до проверки отмены.** `_recent.Add`/`LastFilePath`/
+  `ReflectSort` выполнялись до единственной проверки `ct.IsCancellationRequested` (перед `SetItems`).
+  При гонке быстрых открытий устаревший вызов рассинхронизировал recent/индикатор сортировки.
+  Проверка отмены добавлена сразу после каждого `await _library.Build...Async` — до побочных эффектов.
+
+Циклы 1-5 P5: **31 подтверждённый фикс** + ToastView-guard. Тесты: 88 зелёных
+(добавлены `ImageCacheTests`). Тенденция severity по циклам: HIGH/MEDIUM → MEDIUM/LOW → MEDIUM/LOW
+→ снова всплеск HIGH в цикле 5 (кэш-когерентность, UI-I/O) — свип ещё находит значимое.
+
 ---
 
 ## 6. Соглашения по работе (важно)

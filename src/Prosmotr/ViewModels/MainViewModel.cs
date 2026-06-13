@@ -196,7 +196,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     private void UpdateCurrentContent()
     {
-        var sw = Stopwatch.StartNew();
         var old = CurrentContent;
         var cur = _nav.Current;
 
@@ -240,7 +239,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ThumbnailStrip.SetCurrent(cur);
         UpdateStatus();
         RefreshCommandStates();
-        AppLog.Write($"[Perf] UpdateCurrentContent ({cur?.FileName}): {sw.ElapsedMilliseconds} ms");
     }
 
     private void PreloadNeighbors()

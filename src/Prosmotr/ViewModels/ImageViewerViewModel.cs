@@ -186,6 +186,10 @@ public sealed partial class ImageViewerViewModel : ViewModelBase, IDisposable
                 try { File.Delete(tmp); } catch { }
             }
 
+            // Файл перезаписан → выбрасываем устаревшую (неповёрнутую) запись из общего кэша,
+            // иначе LoadAsync через TryGetLoaded вернёт старую копию и поворот «исчезнет».
+            _cache.Invalidate(Item.FullPath);
+
             // Сброс — теперь файл физически повёрнут.
             Rotation = 0;
             OnPropertyChanged(nameof(CanSaveRotation));

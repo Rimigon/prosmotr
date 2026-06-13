@@ -13,6 +13,10 @@ public interface IImageCache
 
     /// <summary>Вернуть уже готовое (декодированное) изображение синхронно — для переключения без мигания.</summary>
     bool TryGetLoaded(string path, out ImageSource? image);
+
+    /// <summary>Выбросить кэшированную запись по пути — вызывать после перезаписи файла на диске
+    /// (напр. сохранение поворота), иначе вернётся устаревшая копия.</summary>
+    void Invalidate(string path);
 }
 
 /// <summary>Небольшой LRU-кэш декодированных изображений поверх IImageDecodingService.</summary>
@@ -83,6 +87,12 @@ public sealed class ImageCache : IImageCache
             }
         }
         return false;
+    }
+
+    public void Invalidate(string path)
+    {
+        lock (_gate)
+            RemoveEntry(path);
     }
 
     public void Preload(IEnumerable<string> paths)

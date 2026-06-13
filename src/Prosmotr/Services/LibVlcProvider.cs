@@ -43,9 +43,14 @@ public sealed class LibVlcProvider : IDisposable
 
     private static void EnsureCoreInitialized()
     {
-        if (_coreInitialized) return;
-        Core.Initialize();
-        _coreInitialized = true;
+        // lock(_gate) переиспользуемо (re-entrant): getter и warmup-lock-ветка зовут отсюда
+        // уже под _gate, а ранний вызов в начале Warmup — без внешнего lock.
+        lock (_gate)
+        {
+            if (_coreInitialized) return;
+            Core.Initialize();
+            _coreInitialized = true;
+        }
     }
 
     /// <summary>
@@ -55,6 +60,10 @@ public sealed class LibVlcProvider : IDisposable
     /// </summary>
     public static void Warmup()
     {
+        // Core.Initialize() ОБЯЗАН отработать до ЛЮБОГО new LibVLC (настраивает путь к нативным
+        // libvlc/plugins в libvlc\win-x64\). Идемпотентно — повторный вызов под lock ниже безвреден.
+        EnsureCoreInitialized();
+
         var pluginsDir = Path.Combine(AppContext.BaseDirectory, "libvlc", "win-x64", "plugins");
         var cacheFile = Path.Combine(pluginsDir, "plugins.dat");
 

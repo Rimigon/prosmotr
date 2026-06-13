@@ -33,7 +33,6 @@ public sealed partial class MainViewModel
     /// <summary>Открыть путь (файл или папку), построить галерею и перейти к нему.</summary>
     public async Task OpenPathAsync(string path)
     {
-        var sw = Stopwatch.StartNew();
         _openCts?.Cancel();
         _openCts?.Dispose();
         _openCts = new CancellationTokenSource();
@@ -46,6 +45,9 @@ public sealed partial class MainViewModel
             {
                 var (sort, order) = await ResolveOrderingAsync(path);
                 result = await _library.BuildFromFolderAsync(path, sort, order, ct);
+                // Проверяем отмену ДО побочных эффектов: иначе устаревший (проигравший гонку)
+                // вызов запишет recent/индикатор сортировки от не показанной галереи.
+                if (ct.IsCancellationRequested) return;
                 _recent.Add(path, isFolder: true);
                 if (order == null) ReflectSort(sort);
             }
@@ -54,6 +56,7 @@ public sealed partial class MainViewModel
                 var folder = Path.GetDirectoryName(path) ?? string.Empty;
                 var (sort, order) = await ResolveOrderingAsync(folder);
                 result = await _library.BuildFromFileAsync(path, sort, order, ct);
+                if (ct.IsCancellationRequested) return;
                 _recent.Add(path, isFolder: false);
                 _settings.Settings.LastFilePath = path;
                 _settings.SaveDebounced();
@@ -65,8 +68,6 @@ public sealed partial class MainViewModel
                 return;
             }
 
-            // За время await пользователь мог инициировать другое открытие (новый _openCts).
-            // Не затираем актуальную галерею устаревшим результатом.
             if (ct.IsCancellationRequested) return;
 
             if (result.Items.Count == 0)
@@ -78,7 +79,6 @@ public sealed partial class MainViewModel
 
             ClearUndoState(); // открыли другую галерею — отмена прежнего удаления неактуальна
             _nav.SetItems(result.Items, result.StartIndex);
-            AppLog.Write($"[Perf] OpenPathAsync total ({Path.GetFileName(path)}): {sw.ElapsedMilliseconds} ms");
         }
         catch (OperationCanceledException)
         {
@@ -107,7 +107,6 @@ public sealed partial class MainViewModel
     /// </summary>
     private async Task<(SortSpec sort, IReadOnlyList<string>? order)> ResolveOrderingAsync(string folder)
     {
-        var sw = Stopwatch.StartNew();
         var key = string.IsNullOrEmpty(folder) ? null : folder.ToLowerInvariant().TrimEnd('\\', '/');
         _currentFolderKey = key;
 
@@ -115,7 +114,6 @@ public sealed partial class MainViewModel
         if (key != null && _settings.Settings.ManualFolderSorts.TryGetValue(key, out var manual) &&
             TryParseSpec(manual, out var manualSpec))
         {
-            AppLog.Write($"[Perf] Sort resolve (manual): {sw.ElapsedMilliseconds} ms");
             return (manualSpec, null);
         }
 
@@ -143,14 +141,11 @@ public sealed partial class MainViewModel
                 : null;
             if (ordered is { Count: > 0 })
             {
-                AppLog.Write($"[Perf] Sort resolve (explorer, {ordered.Count} items): {sw.ElapsedMilliseconds} ms");
                 return (default, ordered);
             }
-            AppLog.Write($"[Perf] Sort resolve (explorer timeout/fallback): {sw.ElapsedMilliseconds} ms");
         }
 
         // 3) Глобальная настройка по умолчанию.
-        AppLog.Write($"[Perf] Sort resolve (settings): {sw.ElapsedMilliseconds} ms");
         return (new SortSpec(_settings.Settings.SortBy, _settings.Settings.SortDescending), null);
     }
 
