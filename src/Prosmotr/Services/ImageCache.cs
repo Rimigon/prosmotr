@@ -62,7 +62,16 @@ public sealed class ImageCache : IImageCache
             _ = task.ContinueWith(t =>
             {
                 if (t.IsCompletedSuccessfully && t.Result is System.Windows.Media.Imaging.BitmapSource bmp)
-                    entry.EstimatedBytes = (long)bmp.PixelWidth * bmp.PixelHeight * bmp.Format.BitsPerPixel / 8;
+                {
+                    lock (_gate)
+                    {
+                        entry.EstimatedBytes = (long)bmp.PixelWidth * bmp.PixelHeight * bmp.Format.BitsPerPixel / 8;
+                        // Пересчитываем лимит по памяти уже с фактическим размером: при первичном
+                        // синхронном Trim() размер ещё был 0 (декод не завершён), и байтовый лимит
+                        // недосчитывал самые крупные in-flight записи.
+                        Trim();
+                    }
+                }
             }, TaskScheduler.Default);
 
             Trim();

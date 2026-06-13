@@ -233,8 +233,17 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         CurrentContent = next;
 
         if (old is IDisposable disposable && !ReferenceEquals(old, next))
-            Application.Current?.Dispatcher.BeginInvoke(
-                new Action(disposable.Dispose), DispatcherPriority.Background);
+        {
+            // Освобождаем старый контент после визуальной замены (без рывков). Запоминаем ссылку,
+            // чтобы при закрытии до выполнения Background-операции освободить его синхронно в Dispose
+            // (иначе LibVLC выгрузится раньше → осиротевшие MediaPlayer/Media → AV).
+            _pendingDisposal = disposable;
+            Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                disposable.Dispose();
+                if (ReferenceEquals(_pendingDisposal, disposable)) _pendingDisposal = null;
+            }), DispatcherPriority.Background);
+        }
 
         ThumbnailStrip.SetCurrent(cur);
         UpdateStatus();
@@ -316,6 +325,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     private bool _disposed;
+    private IDisposable? _pendingDisposal; // старый контент, ждущий отложенного Background-Dispose
 
     public void Dispose()
     {
@@ -327,6 +337,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _slideshowTimer.Stop();
         ThumbnailStrip.Dispose();
         WeakReferenceMessenger.Default.UnregisterAll(this);
+
+        // Если Background-операция освобождения старого контента ещё не отработала
+        // (быстрая навигация видео→фото + закрытие) — освобождаем синхронно ДО выгрузки LibVLC.
+        _pendingDisposal?.Dispose();
+        _pendingDisposal = null;
 
         if (CurrentContent is IDisposable disposable)
         {

@@ -386,9 +386,13 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
 
-        SavePosition();
+        // SavePosition ДО _disposed=true: сама SavePosition имеет ранний return при _disposed,
+        // поэтому при обратном порядке это был no-op и resume-позиция терялась при video→фото/выходе.
+        // НО только если файл ещё существует: при удалении видео отложенный Dispose иначе воскресил бы
+        // resume-запись, которую Delete уже убрал (_positions.Remove).
+        if (File.Exists(Item.FullPath)) SavePosition();
+        _disposed = true;
 
         var p = _playback.Player;
         p.Playing -= OnPlaying;
