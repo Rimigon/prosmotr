@@ -43,9 +43,24 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase, IDisposable
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
 
+        // Снимок уже декодированных миниатюр по пути. При rebuild (удаление/восстановление/
+        // пересортировка — NavigationService поднимает ListChanged на каждую мутацию)
+        // переиспользуем готовые ImageSource, чтобы не декодировать заново всю папку
+        // (особенно дорого для WEBP/HEIC через Magick) и чтобы лента не мигала.
+        var prevThumbs = new Dictionary<string, ImageSource>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in Items)
+            if (e.Thumbnail != null)
+                prevThumbs[e.Item.FullPath] = e.Thumbnail;
+
         Items.Clear();
 
-        var entries = items.Select(it => new ThumbnailEntry(it)).ToList();
+        var entries = items.Select(it =>
+        {
+            var entry = new ThumbnailEntry(it);
+            if (prevThumbs.TryGetValue(it.FullPath, out var img))
+                entry.Thumbnail = img; // переиспользуем готовую миниатюру
+            return entry;
+        }).ToList();
 
         // Добавляем порциями, чтобы UI-поток не блокировался на минуты
         for (int i = 0; i < entries.Count; i += AddBatchSize)
@@ -100,11 +115,12 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase, IDisposable
         });
 
         // Сначала миниатюра текущего файла — чтобы пользователь сразу видел, куда попал.
+        ThumbnailEntry? priorityEntry = null;
         if (priority != null)
         {
-            var priorityEntry = entries.FirstOrDefault(e =>
+            priorityEntry = entries.FirstOrDefault(e =>
                 string.Equals(e.Item.FullPath, priority.FullPath, StringComparison.OrdinalIgnoreCase));
-            if (priorityEntry != null)
+            if (priorityEntry != null && priorityEntry.Thumbnail == null)
             {
                 try
                 {
@@ -123,7 +139,11 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase, IDisposable
             CancellationToken = ct
         };
 
-        await Parallel.ForEachAsync(entries, options, async (entry, token) =>
+        // Пропускаем приоритетный (уже обработан выше) и уже готовые (переиспользованные
+        // при rebuild) миниатюры — иначе впустую тратятся слоты throttle-семафора и декод.
+        var pending = entries.Where(e => !ReferenceEquals(e, priorityEntry) && e.Thumbnail == null);
+
+        await Parallel.ForEachAsync(pending, options, async (entry, token) =>
         {
             try
             {

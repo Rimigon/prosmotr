@@ -46,6 +46,9 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     /// <summary>Максимум громкости (с усилением до 300 %).</summary>
     public int MaxVolume => VideoPlaybackService.MaxVolume;
 
+    /// <summary>Скрывать ли панель/курсор по таймеру бездействия (настройка AutoHideControls).</summary>
+    public bool AutoHideControls => _settings.Settings.AutoHideControls;
+
     /// <summary>Включено ли усиление (громкость выше 100 %).</summary>
     public bool IsBoosted => Volume > 100;
 

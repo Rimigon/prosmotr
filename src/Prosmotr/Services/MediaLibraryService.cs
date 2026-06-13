@@ -101,15 +101,22 @@ public sealed class MediaLibraryService : IMediaLibraryService
 
             try
             {
-                foreach (var path in Directory.EnumerateFiles(folder, "*", options))
+                // DirectoryInfo.EnumerateFiles отдаёт FileInfo с уже заполненными из записи
+                // каталога атрибутами (размер, даты) — без повторного stat-вызова на каждый файл,
+                // в отличие от Directory.EnumerateFiles + new FileInfo(path).
+                foreach (var fi in new DirectoryInfo(folder).EnumerateFiles("*", options))
                 {
                     ct.ThrowIfCancellationRequested();
                     try
                     {
-                        var type = SupportedFormats.GetMediaType(path);
+                        var type = SupportedFormats.GetMediaType(fi.FullName);
                         if (type == MediaType.Unknown) continue;
-                        var item = new MediaItem(path, type);
-                        TryFillMetadata(item);
+                        var item = new MediaItem(fi.FullName, type)
+                        {
+                            FileSizeBytes = fi.Length,
+                            LastWriteTimeUtc = fi.LastWriteTimeUtc,
+                            CreationTimeUtc = fi.CreationTimeUtc
+                        };
                         result.Add(item);
                     }
                     catch { /* файл мог исчезнуть/заблокироваться — пропускаем */ }

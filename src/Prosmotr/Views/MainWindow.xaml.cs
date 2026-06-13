@@ -139,6 +139,7 @@ public partial class MainWindow : FluentWindow
     private void OnChromeHideTick(object? sender, EventArgs e)
     {
         _chromeHideTimer.Stop();
+        if (!_settings.Settings.AutoHideControls) return; // автоскрытие отключено настройкой
         if (_vm.CurrentContent is not ImageViewerViewModel) return;
 
         _vm.ChromeVisible = false;
@@ -161,7 +162,9 @@ public partial class MainWindow : FluentWindow
     private void RestartChromeTimer()
     {
         _chromeHideTimer.Stop();
-        _chromeHideTimer.Start();
+        // Если автоскрытие отключено настройкой — не запускаем таймер, хром остаётся видимым.
+        if (_settings.Settings.AutoHideControls)
+            _chromeHideTimer.Start();
     }
 
     // --- Размещение ленты миниатюр (снизу / слева) ---

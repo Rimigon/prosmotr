@@ -9,6 +9,11 @@ public sealed class MediaItem
     {
         FullPath = fullPath;
         MediaType = mediaType;
+        // FullPath неизменяем — производные имена/расширение вычисляем один раз.
+        // Эти свойства массово дёргаются в компараторе сортировки (O(n log n)).
+        FileName = Path.GetFileName(fullPath);
+        Extension = Path.GetExtension(fullPath);
+        DirectoryPath = Path.GetDirectoryName(fullPath) ?? string.Empty;
     }
 
     public string FullPath { get; }
@@ -19,9 +24,9 @@ public sealed class MediaItem
     public DateTime LastWriteTimeUtc { get; set; }
     public DateTime CreationTimeUtc { get; set; }
 
-    public string Extension => Path.GetExtension(FullPath);
-    public string FileName => Path.GetFileName(FullPath);
-    public string DirectoryPath => Path.GetDirectoryName(FullPath) ?? string.Empty;
+    public string Extension { get; }
+    public string FileName { get; }
+    public string DirectoryPath { get; }
 
     public bool IsVideo => MediaType == MediaType.Video;
     public bool IsImage => MediaType is MediaType.Image or MediaType.AnimatedImage;

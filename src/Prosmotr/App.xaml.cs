@@ -91,13 +91,24 @@ public partial class App : Application
             // на время первого сканирования plugins\ при холодном старте.
             libvlcWarmup.ContinueWith(_ =>
             {
-                Dispatcher.Invoke(() =>
+                // Окно закрыли во время прогрева (3-8 с на холодном старте) → хост уже выгружен.
+                // Не дёргаем InitializeAsync на уничтоженном VM (как в OnSecondInstance/pipe-сервере).
+                if (_appCts.IsCancellationRequested) return;
+                try
                 {
-                    _ = vm.InitializeAsync(e.Args).ContinueWith(t =>
+                    Dispatcher.Invoke(() =>
                     {
-                        AppLog.Write($"[Perf] Startup+open: {startupSw.ElapsedMilliseconds} ms");
-                    }, TaskScheduler.Default);
-                });
+                        if (_appCts.IsCancellationRequested) return;
+                        _ = vm.InitializeAsync(e.Args).ContinueWith(t =>
+                        {
+                            if (t.IsFaulted)
+                                AppLog.Error("Startup InitializeAsync", t.Exception!);
+                            else
+                                AppLog.Write($"[Perf] Startup+open: {startupSw.ElapsedMilliseconds} ms");
+                        }, TaskScheduler.Default);
+                    });
+                }
+                catch (InvalidOperationException) { /* Dispatcher завершается при закрытии — игнорируем */ }
             }, TaskScheduler.Default);
 
             // Shell-интеграцию уводим в фон — реестр на холодной системе может подвисать.
@@ -140,8 +151,20 @@ public partial class App : Application
                     using var server = new NamedPipeServerStream(
                         PipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
                     await server.WaitForConnectionAsync(_appCts.Token).ConfigureAwait(false);
-                    using var reader = new StreamReader(server);
-                    var path = await reader.ReadLineAsync().ConfigureAwait(false);
+
+                    // Читаем ОГРАНИЧЕННЫЙ объём: путь Windows не длиннее ~32K символов.
+                    // Без лимита локальный процесс мог бы слать гигабайты без '\n' и исчерпать
+                    // память работающего экземпляра (DoS). Останавливаемся на первой строке.
+                    const int maxBytes = 64 * 1024;
+                    var buffer = new byte[maxBytes];
+                    int total = 0, read;
+                    while (total < maxBytes &&
+                           (read = await server.ReadAsync(buffer.AsMemory(total, maxBytes - total), _appCts.Token).ConfigureAwait(false)) > 0)
+                    {
+                        total += read;
+                        if (Array.IndexOf(buffer, (byte)'\n', 0, total) >= 0) break;
+                    }
+                    var path = System.Text.Encoding.UTF8.GetString(buffer, 0, total).Split('\n', '\r')[0];
                     if (!string.IsNullOrEmpty(path) && !_appCts.IsCancellationRequested)
                         Dispatcher.Invoke(() => OnSecondInstance(path));
                 }

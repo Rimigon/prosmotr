@@ -95,19 +95,7 @@ public sealed class VideoPlaybackService : IDisposable
         => Player.AddSlave(MediaSlaveType.Subtitle, ToFileUri(path), select);
 
     /// <summary>Построить корректный file:// URI, экранируя # и % (на них new Uri бросает UriFormatException).</summary>
-    internal static string ToFileUri(string path)
-    {
-        try
-        {
-            return new Uri(path, UriKind.Absolute).AbsoluteUri;
-        }
-        catch (UriFormatException)
-        {
-            // Сначала %, потом # — чтобы не задвоить экранирование уже вставленных %25.
-            var escaped = path.Replace("%", "%25").Replace("#", "%23");
-            return new Uri(escaped, UriKind.Absolute).AbsoluteUri;
-        }
-    }
+    internal static string ToFileUri(string path) => Prosmotr.Infrastructure.PathUri.ToUri(path).AbsoluteUri;
 
     /// <summary>Сохранить текущий кадр в файл (исходный размер). true — запрос принят.</summary>
     public bool TakeSnapshot(string path) => Player.TakeSnapshot(0, path, 0, 0);

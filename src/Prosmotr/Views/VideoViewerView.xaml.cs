@@ -383,7 +383,9 @@ public partial class VideoViewerView : UserControl
         UpdateSideNav();
         UpdateInfo();
         _hideTimer.Stop();
-        _hideTimer.Start();
+        // Если автоскрытие отключено настройкой — таймер не запускаем, панель остаётся видимой.
+        if (_vm == null || _vm.AutoHideControls)
+            _hideTimer.Start();
     }
 
     private void HideControlsIfPlaying()

@@ -172,8 +172,17 @@ public sealed partial class MainViewModel
         _settings.Settings.SortBy = SelectedSortField;
         _settings.Settings.SortDescending = SortDescending;
         // Запоминаем выбор пользователя для текущей папки — он перекрывает Проводник при след. открытии.
+        // Атомарная подмена словаря (а не мутация по месту): фоновый debounce-таймер SettingsService
+        // сериализует Settings на пуле, и одновременное изменение словаря бросило бы
+        // InvalidOperationException внутри JsonSerializer (настройки молча не сохранились бы) —
+        // тот же приём, что у RecentFiles.
         if (_currentFolderKey != null)
-            _settings.Settings.ManualFolderSorts[_currentFolderKey] = $"{SelectedSortField}:{SortDescending}";
+        {
+            _settings.Settings.ManualFolderSorts = new Dictionary<string, string>(_settings.Settings.ManualFolderSorts)
+            {
+                [_currentFolderKey] = $"{SelectedSortField}:{SortDescending}"
+            };
+        }
         _settings.SaveDebounced();
         ApplySort();
     }

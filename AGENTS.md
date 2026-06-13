@@ -706,6 +706,50 @@ Magick.NET (конвертация в **BMP** в памяти — раньше �
 - **Запуск:** `dotnet test tests\Prosmotr.Tests\Prosmotr.Tests.csproj`. Если добавляешь логику в
   сервисы навигации/библиотеки/форматов — добавь тест в рамках того же изменения.
 
+### 5.22. Оркестрированный аудит P5 (цикл 1) — многоагентная верификация
+
+Итерация по результатам многоагентного аудита (10 finder-измерений + адверсариальная верификация
+каждой находки). Подтверждённые и исправленные дефекты:
+
+- **Лента миниатюр: переиспользование готовых миниатюр при rebuild.** `NavigationService`
+  поднимает `ListChanged` на КАЖДУЮ мутацию (`RemoveAt`/`InsertAt`/`ReorderPreservingCurrent`),
+  и `ThumbnailStripViewModel.SetItemsAsync` раньше `Items.Clear()` + пересоздавал все entry +
+  декодировал ВСЕ миниатюры заново (дорого для WEBP/HEIC через Magick, мигание ленты). Теперь
+  перед `Clear()` снимается снимок `prevThumbs` (path → ImageSource), и при rebuild готовые
+  миниатюры переиспользуются; `LoadThumbnailsAsync` декодирует только `Thumbnail == null` и
+  **пропускает приоритетный entry** в `Parallel.ForEachAsync` (раньше он декодировался дважды).
+- **App: гонка warmup-continuation со shutdown.** `libvlcWarmup.ContinueWith → Dispatcher.Invoke →
+  vm.InitializeAsync` не проверял отмену и не был в try/catch. При закрытии окна во время прогрева
+  LibVLC (3-8 с) continuation дёргала VM/сервисы после `Dispose`. Добавлены проверка
+  `_appCts.IsCancellationRequested` (снаружи и внутри Invoke) и `try/catch (InvalidOperationException)`
+  — как в `OnSecondInstance`/pipe-сервере. Faulted-таск логируется.
+- **App: named pipe читает ограниченный объём.** `StreamReader.ReadLineAsync` без лимита →
+  локальный процесс мог слать гигабайты без `\n` (DoS по памяти). Заменено на чтение в буфер
+  фикс. размера (64 КБ) с остановкой на первой строке.
+- **SettingsService: гонка сериализации `ManualFolderSorts`.** Словарь мутировался по месту, пока
+  debounce-таймер сериализовал `Settings` на пуле → `InvalidOperationException` (настройки молча
+  не сохранялись). Теперь атомарная подмена словаря в `PersistAndApplySort` — как у `RecentFiles`.
+- **MediaLibraryService: один обход метаданных вместо двух.** `Directory.EnumerateFiles` +
+  `new FileInfo(path)` (повторный stat на каждый файл) заменены на `new DirectoryInfo(folder)
+  .EnumerateFiles(...)` — `FileInfo` приходит с уже заполненными из записи каталога размером/датами
+  (важно для сетевых дисков и больших папок).
+- **MediaItem: производные имена кэшируются.** `FileName`/`Extension`/`DirectoryPath` вычислялись
+  через `Path.*` при каждом обращении (горячий путь компаратора сортировки O(n log n)). `FullPath`
+  неизменяем — вычисляем один раз в конструкторе.
+- **Хоткеи: устранён рассинхрон списков.** `F`/`F12`/`M`/`Decimal` добавлены в `ConflictingKeys`
+  и убраны из предлагаемых `ExitKeys` — пользователь больше не может назначить на Exit/Chrome
+  клавишу, жёстко занятую (полный экран / клон / mute / удаление).
+- **Настройка `AutoHideControls` ожила.** Раньше сохранялась и имела тоггл, но нигде не читалась.
+  Теперь `MainWindow` (фото: `RestartChromeTimer`/`OnChromeHideTick`) и `VideoViewerView`
+  (видео: `ShowControls` через `VideoViewerViewModel.AutoHideControls`) уважают её: при `false`
+  таймер автоскрытия не запускается. Дефолт `true` — поведение по умолчанию не изменилось.
+- **DRY: экранирование путей `#`/`%` вынесено в `Infrastructure/PathUri`.** `PathUri.ToUri`/`Escape`
+  используются в `VideoPlaybackService.ToFileUri` и `ImageViewerViewModel.AnimatedSource`
+  (раньше дублировался inline-код с порядком замен).
+
+Тесты: добавлены `PathUriTests`, `MediaLibraryScanTests` (интеграционные на реальных файлах).
+Всего юнит-тестов — 84.
+
 ---
 
 ## 6. Соглашения по работе (важно)

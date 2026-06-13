@@ -26,13 +26,7 @@ public sealed partial class ImageViewerViewModel : ViewModelBase, IDisposable
         get
         {
             if (!IsAnimated) return null;
-            try { return new Uri(Item.FullPath, UriKind.Absolute); }
-            catch (UriFormatException)
-            {
-                // # / % в пути ломают new Uri. Экранируем (сначала %, потом #).
-                var escaped = Item.FullPath.Replace("%", "%25").Replace("#", "%23");
-                return new Uri(escaped, UriKind.Absolute);
-            }
+            return PathUri.ToUri(Item.FullPath); // устойчиво к # / % в пути
         }
     }
 
