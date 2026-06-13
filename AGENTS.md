@@ -788,6 +788,28 @@ architecture). Подтверждено и исправлено 11 дефект�
 
 Тесты: 85 (добавлен кейс на новую границу `SeekStepSeconds`).
 
+### 5.24. Оркестрированный аудит P5 (цикл 4) — добивка после восстановления лимитов
+
+Четвёртый цикл (полный свип 10 измерений). Подтверждено и исправлено 5 дефектов:
+
+- **Слайд-шоу зависало на видео с ошибкой.** `OnSlideshowTick` пропускал тик при
+  `VideoViewerViewModel { IsEnded: false }`, но видео с `HasError` никогда не поднимает
+  `EndReached` → `IsEnded` навсегда false → показ застревал на битом файле. Условие дополнено
+  `HasError: false` (пробел в фиксе цикла 2 5.23 — учитывался только `IsEnded`).
+- **Нет process-wide обработчиков исключений.** Был только `DispatcherUnhandledException`
+  (UI-поток). Фоновые сбои (fire-and-forget задачи, continuations, STA-потоки) не логировались.
+  Добавлены `TaskScheduler.UnobservedTaskException` (с `SetObserved`) и
+  `AppDomain.CurrentDomain.UnhandledException` → `LogCrash`.
+- **`OpenDefaultAppsSettings` без try/catch.** `ms-settings:` мог быть недоступен (политика) →
+  `Win32Exception` всплывал в `DispatcherUnhandledException` (пугающее окно). Обёрнут в
+  try/catch + `using` (как в `ShellService`).
+- **Регистрация ассоциаций из UI без обработки.** `OnIntegrateShellChanged`/`ToggleAssociations`
+  вызывали `Register`/`Unregister` без try/catch (в ограниченной среде — креш + рассинхрон
+  тумблера). Обёрнуто в try/catch с `AppLog.Error` и ресинхронизацией `IsAssociationsRegistered`.
+- **Мёртвый член `IShellService.OpenUri`.** Не вызывался нигде — удалён из интерфейса и реализации.
+
+Циклы 1-4 P5 суммарно: **27 подтверждённых фиксов** + 1 lifecycle-guard. Тесты: 85 зелёных.
+
 ---
 
 ## 6. Соглашения по работе (важно)

@@ -25,5 +25,4 @@ public interface IShellService
     void CopyPathToClipboard(string path);
     /// <summary>Открыть системный диалог «Открыть с помощью…».</summary>
     void OpenWith(string path);
-    void OpenUri(string uri);
 }

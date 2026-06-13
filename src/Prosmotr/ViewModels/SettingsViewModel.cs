@@ -1,6 +1,7 @@
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Prosmotr.Infrastructure;
 using Prosmotr.Models;
 using Prosmotr.Services.Abstractions;
 
@@ -161,16 +162,26 @@ public sealed partial class SettingsViewModel : ViewModelBase
         Commit();
         if (_loading) return;
         // Сразу применяем: регистрируем/убираем ассоциации и контекстное меню.
-        if (value && !_assoc.IsRegistered) _assoc.Register();
-        else if (!value && _assoc.IsRegistered) _assoc.Unregister();
+        // try/catch: запись в реестр может упасть в ограниченной среде (GPO/политика) —
+        // не роняем в DispatcherUnhandledException, тумблер ресинхронизируем с фактом.
+        try
+        {
+            if (value && !_assoc.IsRegistered) _assoc.Register();
+            else if (!value && _assoc.IsRegistered) _assoc.Unregister();
+        }
+        catch (Exception ex) { AppLog.Error("IntegrateShell toggle", ex); }
         IsAssociationsRegistered = _assoc.IsRegistered;
     }
 
     [RelayCommand]
     private void ToggleAssociations()
     {
-        if (IsAssociationsRegistered) _assoc.Unregister();
-        else _assoc.Register();
+        try
+        {
+            if (IsAssociationsRegistered) _assoc.Unregister();
+            else _assoc.Register();
+        }
+        catch (Exception ex) { AppLog.Error("ToggleAssociations", ex); }
         IsAssociationsRegistered = _assoc.IsRegistered;
     }
 

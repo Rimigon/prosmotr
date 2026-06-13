@@ -257,9 +257,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     private void OnSlideshowTick()
     {
-        // Не обрываем недосмотренное видео по интервалу слайда — ждём его окончания (IsEnded),
-        // следующий тик после этого переключит на новый файл.
-        if (CurrentContent is VideoViewerViewModel { IsEnded: false }) return;
+        // Не обрываем недосмотренное видео по интервалу слайда — ждём его окончания (IsEnded).
+        // НО: видео с ошибкой воспроизведения (HasError) никогда не поднимет EndReached →
+        // IsEnded навсегда false; без проверки HasError слайд-шоу зависло бы на битом файле.
+        if (CurrentContent is VideoViewerViewModel { IsEnded: false, HasError: false }) return;
         _nav.MoveNext();
     }
 

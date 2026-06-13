@@ -54,6 +54,16 @@ public partial class App : Application
 
         // Глобальная обработка непойманных исключений в UI-потоке.
         DispatcherUnhandledException += OnDispatcherUnhandledException;
+        // Фоновые сбои (fire-and-forget задачи, continuations, STA-потоки) не доходят до
+        // DispatcherUnhandledException — логируем их, иначе app.log пуст при таких ошибках.
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            LogCrash("UnobservedTask", e.Exception);
+            e.SetObserved(); // не валим процесс из-за непросмотренной задачи
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            LogCrash("AppDomain", e.ExceptionObject as Exception
+                ?? new Exception(e.ExceptionObject?.ToString() ?? "unknown"));
 
         try
         {

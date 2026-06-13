@@ -96,8 +96,13 @@ public sealed class FileAssociationService : IFileAssociationService
         NotifyShell();
     }
 
-    public void OpenDefaultAppsSettings() =>
-        Process.Start(new ProcessStartInfo("ms-settings:defaultapps") { UseShellExecute = true });
+    public void OpenDefaultAppsSettings()
+    {
+        // try/catch как в ShellService: ms-settings: может быть недоступен (политика/повреждённый
+        // профиль) → Win32Exception всплыл бы в DispatcherUnhandledException с пугающим окном.
+        try { using var _ = Process.Start(new ProcessStartInfo("ms-settings:defaultapps") { UseShellExecute = true }); }
+        catch (Exception ex) { AppLog.Error("OpenDefaultAppsSettings", ex); }
+    }
 
     private static void TryDelete(Action action)
     {

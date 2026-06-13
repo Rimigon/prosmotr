@@ -38,13 +38,4 @@ public sealed class ShellService : IShellService
         }
         catch { }
     }
-
-    public void OpenUri(string uri)
-    {
-        try
-        {
-            using var _ = Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
-        }
-        catch { }
-    }
 }
