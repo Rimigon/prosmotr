@@ -174,6 +174,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             HasItems = _nav.HasItems;
             await ThumbnailStrip.SetItemsAsync(_nav.Items, _nav.Current);
             ThumbnailStrip.SetCurrent(_nav.Current);
+            // Пересортировка (ReorderPreservingCurrent) поднимает только ListChanged, но _index
+            // меняется (файл переехал) → счётчик «N из M» в статусе/инфо-плашке устаревал.
+            // UpdateStatus идемпотентен, дублирование с UpdateCurrentContent безвредно.
+            UpdateStatus();
             if (!HasItems && IsSlideshowActive)
             {
                 _slideshowTimer.Stop();
