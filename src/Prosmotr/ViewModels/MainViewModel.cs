@@ -133,7 +133,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _settings.SettingsChanged += (_, _) => OnSettingsChanged();
 
         _slideshowTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(Math.Clamp(_settings.Settings.SlideshowIntervalSeconds, 1, 60)) };
-        _slideshowTimer.Tick += (_, _) => _nav.MoveNext();
+        _slideshowTimer.Tick += (_, _) => OnSlideshowTick();
 
         WeakReferenceMessenger.Default.Register<MainViewModel, ToggleFullScreenMessage>(
             this, (r, _) => r.ToggleFullScreen());
@@ -255,6 +255,14 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             .Select(m => m.FullPath));
     }
 
+    private void OnSlideshowTick()
+    {
+        // Не обрываем недосмотренное видео по интервалу слайда — ждём его окончания (IsEnded),
+        // следующий тик после этого переключит на новый файл.
+        if (CurrentContent is VideoViewerViewModel { IsEnded: false }) return;
+        _nav.MoveNext();
+    }
+
     private void OnSettingsChanged()
     {
         OnPropertyChanged(nameof(ShowThumbnailStrip));
@@ -287,7 +295,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         PreviousCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
         ShowInExplorerCommand.NotifyCanExecuteChanged();
-        OpenContainingFolderCommand.NotifyCanExecuteChanged();
         CopyPathCommand.NotifyCanExecuteChanged();
         OpenWithCommand.NotifyCanExecuteChanged();
         ShowPropertiesCommand.NotifyCanExecuteChanged();

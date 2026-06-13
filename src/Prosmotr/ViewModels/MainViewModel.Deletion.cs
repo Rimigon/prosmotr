@@ -40,9 +40,12 @@ public sealed partial class MainViewModel
             var result = await _deletion.DeleteAsync(cur.FullPath, permanent);
             if (result.Success)
             {
-                _positions.Remove(cur.FullPath);
                 _nav.RemoveAt(index); // удаляем по зафиксированному индексу, а не по текущему —
                                       // иначе во время await пользователь мог сменить файл стрелками
+                // Remove ПОСЛЕ RemoveAt: переключение на следующий файл (SwitchTo) или disposal
+                // старого плеера синхронно вызывает SavePosition для удаляемого файла, что
+                // воссоздало бы его resume-запись. Чистим её после.
+                _positions.Remove(cur.FullPath);
 
                 var notify = _settings.Settings.ShowDeleteNotification;
                 if (permanent)

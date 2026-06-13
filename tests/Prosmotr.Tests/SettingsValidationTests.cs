@@ -32,6 +32,15 @@ public sealed class SettingsValidationTests
     }
 
     [Fact]
+    public void SeekStep_AboveSliderMax_ReplacedWithDefault()
+    {
+        // Граница согласована со слайдером [1,30]: 60 теперь невалидно → дефолт.
+        var s = new AppSettings { SeekStepSeconds = 60 };
+        SettingsService.ValidateAndFix(s);
+        Assert.Equal(new AppSettings().SeekStepSeconds, s.SeekStepSeconds);
+    }
+
+    [Fact]
     public void ValidValues_AreKept()
     {
         var s = new AppSettings

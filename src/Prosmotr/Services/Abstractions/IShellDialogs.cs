@@ -22,7 +22,6 @@ public interface IDialogService
 public interface IShellService
 {
     void ShowInExplorer(string path);
-    void OpenContainingFolder(string path);
     void CopyPathToClipboard(string path);
     /// <summary>Открыть системный диалог «Открыть с помощью…».</summary>
     void OpenWith(string path);

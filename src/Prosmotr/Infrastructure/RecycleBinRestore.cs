@@ -22,7 +22,7 @@ public static class RecycleBinRestore
 
     /// <summary>Восстановить файл из Корзины обратно по пути <paramref name="originalPath"/>.</summary>
     public static Task<bool> RestoreAsync(string originalPath) =>
-        RunStaAsync(() => Restore(originalPath));
+        StaTask.Run(() => Restore(originalPath));
 
     private static bool Restore(string originalPath)
     {
@@ -32,26 +32,33 @@ public static class RecycleBinRestore
         dynamic? shell = Activator.CreateInstance(shellType);
         if (shell == null) return false;
 
+        dynamic? recycleBin = null;
+        dynamic? items = null;
+        dynamic? best = null;
         try
         {
-            dynamic recycleBin = shell.NameSpace(RecycleBinFolder);
-            dynamic items = recycleBin.Items();
+            recycleBin = shell.NameSpace(RecycleBinFolder);
+            items = recycleBin.Items();
             int count = items.Count;
 
-            dynamic? best = null;
             DateTime bestDate = DateTime.MinValue;
 
             for (int i = 0; i < count; i++)
             {
                 dynamic item = items.Item(i);
-                if (!MatchesPath(item, originalPath)) continue;
-
-                var date = TryGetDeletedDate(item);
-                if (best == null || date >= bestDate)
+                bool keep = false;
+                if (MatchesPath(item, originalPath))
                 {
-                    best = item;
-                    bestDate = date;
+                    var date = TryGetDeletedDate(item);
+                    if (best == null || date >= bestDate)
+                    {
+                        Release(best);      // прежний кандидат больше не нужен
+                        best = item;
+                        bestDate = date;
+                        keep = true;
+                    }
                 }
+                if (!keep) Release(item);   // не подошёл — освобождаем сразу (иначе утечка RCW)
             }
 
             if (best == null) return false;
@@ -71,8 +78,19 @@ public static class RecycleBinRestore
         }
         finally
         {
+            // Освобождаем все промежуточные RCW на этом же STA-потоке до его завершения.
+            Release(best);
+            Release(items);
+            Release(recycleBin);
             try { Marshal.FinalReleaseComObject(shell); } catch { }
         }
+    }
+
+    /// <summary>Безопасно освободить COM-RCW (без throw).</summary>
+    private static void Release(object? comObject)
+    {
+        if (comObject != null)
+            try { Marshal.ReleaseComObject(comObject); } catch { }
     }
 
     private static bool MatchesPath(dynamic item, string originalPath)
@@ -108,36 +126,31 @@ public static class RecycleBinRestore
     private static void InvokeRestore(dynamic item)
     {
         dynamic verbs = item.Verbs();
-        int verbCount = verbs.Count;
         dynamic? first = null;
-
-        for (int i = 0; i < verbCount; i++)
+        try
         {
-            dynamic verb = verbs.Item(i);
-            if (i == 0) first = verb;
-
-            string normalized = ((string)verb.Name).Replace("&", "").Trim().ToLowerInvariant();
-            if (Array.IndexOf(RestoreVerbNames, normalized) >= 0)
+            int verbCount = verbs.Count;
+            for (int i = 0; i < verbCount; i++)
             {
-                verb.DoIt();
-                return;
+                dynamic verb = verbs.Item(i);
+                if (i == 0) first = verb; // первый глагол освобождаем в finally
+
+                string normalized = ((string)verb.Name).Replace("&", "").Trim().ToLowerInvariant();
+                if (Array.IndexOf(RestoreVerbNames, normalized) >= 0)
+                {
+                    verb.DoIt();
+                    if (i != 0) Release(verb);
+                    return;
+                }
+                if (i != 0) Release(verb); // не first и не подошёл — освобождаем сразу
             }
+
+            first?.DoIt(); // fallback: для элементов Корзины первый глагол — «Восстановить»
         }
-
-        first?.DoIt();
-    }
-
-    private static Task<bool> RunStaAsync(Func<bool> work)
-    {
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
+        finally
         {
-            try { tcs.SetResult(work()); }
-            catch (Exception ex) { tcs.SetException(ex); }
-        });
-        thread.IsBackground = true;
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        return tcs.Task;
+            Release(first);
+            Release(verbs);
+        }
     }
 }

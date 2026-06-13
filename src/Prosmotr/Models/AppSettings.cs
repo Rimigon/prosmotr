@@ -15,8 +15,9 @@ public sealed class AppSettings
     public bool ResumeVideoPosition { get; set; } = true;
     public int LastVolume { get; set; } = 100;
     public bool LastMuted { get; set; } = false;
-    /// <summary>Шаг перемотки видео клавишами ←/→ в полноэкранном режиме, секунд.</summary>
-    [Range(1, 3600)]
+    /// <summary>Шаг перемотки видео клавишами ←/→ в полноэкранном режиме, секунд.
+    /// Границы [1, 30] согласованы со слайдером в настройках и Math.Clamp в SettingsViewModel.</summary>
+    [Range(1, 30)]
     public int SeekStepSeconds { get; set; } = 5;
     /// <summary>Покадровая перемотка: ←/→ шагают по одному кадру вместо <see cref="SeekStepSeconds"/>.</summary>
     public bool FrameByFrameSeek { get; set; } = false;

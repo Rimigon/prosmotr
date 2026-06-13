@@ -15,9 +15,6 @@ public sealed partial class MainViewModel
     private void ShowInExplorer() => Run(p => _shell.ShowInExplorer(p));
 
     [RelayCommand(CanExecute = nameof(HasCurrent))]
-    private void OpenContainingFolder() => Run(p => _shell.OpenContainingFolder(p));
-
-    [RelayCommand(CanExecute = nameof(HasCurrent))]
     private void CopyPath() => Run(p =>
     {
         _shell.CopyPathToClipboard(p);

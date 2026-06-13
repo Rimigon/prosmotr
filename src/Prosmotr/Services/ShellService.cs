@@ -14,21 +14,10 @@ public sealed class ShellService : IShellService
         try
         {
             var safe = path.Replace("\"", "\\\"");
-            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{safe}\"") { UseShellExecute = true });
+            // using: освобождаем управляемый Process (нативный хендл) сразу — сам explorer живёт дальше.
+            using var _ = Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{safe}\"") { UseShellExecute = true });
         }
         catch { /* проводник недоступен — игнорируем */ }
-    }
-
-    public void OpenContainingFolder(string path)
-    {
-        var folder = Directory.Exists(path) ? path : Path.GetDirectoryName(path);
-        if (string.IsNullOrEmpty(folder)) return;
-        try
-        {
-            var safe = folder.Replace("\"", "\\\"");
-            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{safe}\"") { UseShellExecute = true });
-        }
-        catch { }
     }
 
     public void CopyPathToClipboard(string path)
@@ -44,7 +33,7 @@ public sealed class ShellService : IShellService
             var safe = path.Replace("\"", "\\\"");
             // Системный диалог «Открыть с помощью…» (надёжно работает через rundll32).
             // Путь обязательно в кавычках — иначе пробелы разбивают его на аргументы.
-            Process.Start(new ProcessStartInfo("rundll32.exe",
+            using var _ = Process.Start(new ProcessStartInfo("rundll32.exe",
                 $"shell32.dll,OpenAs_RunDLL \"{safe}\"") { UseShellExecute = true });
         }
         catch { }
@@ -54,7 +43,7 @@ public sealed class ShellService : IShellService
     {
         try
         {
-            Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
+            using var _ = Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
         }
         catch { }
     }

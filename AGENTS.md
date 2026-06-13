@@ -750,6 +750,44 @@ Magick.NET (конвертация в **BMP** в памяти — раньше �
 Тесты: добавлены `PathUriTests`, `MediaLibraryScanTests` (интеграционные на реальных файлах).
 Всего юнит-тестов — 84.
 
+### 5.23. Оркестрированный аудит P5 (цикл 2) — leaks/logic/interop/errorhandling
+
+Второй цикл многоагентной верификации (измерения logic/errorhandling/interop/leaks/concurrency/
+architecture). Подтверждено и исправлено 11 дефектов:
+
+- **Двойная подписка `_mainVm` в `VideoViewerView` (утечка).** `OnDataContextChanged` и `OnLoaded`
+  оба делали `+=` для одного экземпляра → один `OnMainVmPropertyChanged` оставался висеть на
+  singleton `MainViewModel`, удерживая выгруженный View (с нативным HWND VLC). Введён идемпотентный
+  `AttachMainVm(vm)` (сначала `-=`, потом `+=`, no-op если тот же VM); `DetachMainVm` = `AttachMainVm(null)`.
+- **Удаление видео воссоздавало его resume-позицию.** `Delete` вызывал `_positions.Remove` ДО
+  `RemoveAt`, а `RemoveAt`→`SwitchTo`/disposal старого плеера синхронно делал `SavePosition`
+  удаляемого файла. `Remove` перенесён ПОСЛЕ `RemoveAt`.
+- **Гонка `_thumbBatchTimer` между перекрывающимися `SetItemsAsync`.** Хвост устаревшей загрузки
+  мог остановить/обнулить таймер новой ленты (миниатюры не выгружались). Таймер привязан к
+  локальной ссылке; поле обнуляется только если `ReferenceEquals(_thumbBatchTimer, localTimer)`.
+- **`OpenPathAsync`: `OperationCanceledException` → ложная ошибка.** OCE из отменённого скана
+  попадала в общий `catch` (тост «Не удалось открыть» + ERROR в логе). Добавлен тихий
+  `catch (OperationCanceledException)`.
+- **`RecycleBinRestore`: утечка RCW COM-объектов.** Освобождался только корневой `shell`;
+  `recycleBin`/`items`/каждый `item`/`verbs`/`verb` — нет. Добавлен `Release(...)` для всех
+  промежуточных RCW на STA-потоке (по конвенции `ExplorerSortReader`/`FileDeletionService`).
+- **`ExplorerSortReader` вызывался из MTA-пула.** Shell-COM (STA-only) маршалился через прокси —
+  «сортировка как в Проводнике» могла молча отказывать. Введён `Infrastructure/StaTask.Run<T>` —
+  выделенный STA-поток; используется и в `ResolveOrderingAsync`, и в `RecycleBinRestore`
+  (старый приватный `RunStaAsync` удалён, DRY).
+- **Отмена удаления после пересортировки.** `_lastDeletedIndex` устаревал при смене сортировки →
+  файл вставлялся не на место. `PersistAndApplySort` теперь вызывает `ClearUndoState()`.
+- **Слайд-шоу обрывало видео.** Таймер безусловно делал `MoveNext` каждые N сек. Теперь
+  `OnSlideshowTick` пропускает тик, если `CurrentContent is VideoViewerViewModel { IsEnded: false }`.
+- **`ShellService`: `Process.Start` не освобождался.** Обёрнут в `using` (хендл закрывается сразу,
+  сам explorer/rundll32 живёт дальше).
+- **Мёртвая команда `OpenContainingFolder`.** Не привязана нигде в UI — удалена команда,
+  строка в `RefreshCommandStates`, метод из `IShellService`/`ShellService`.
+- **`SeekStepSeconds`: три разных предела.** Модель `[Range(1,3600)]`, `Commit` clamp 120, слайдер 30.
+  Сведено к единому `[1, 30]` (диапазон слайдера).
+
+Тесты: 85 (добавлен кейс на новую границу `SeekStepSeconds`).
+
 ---
 
 ## 6. Соглашения по работе (важно)

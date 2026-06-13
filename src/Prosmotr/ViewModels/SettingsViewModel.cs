@@ -124,7 +124,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         s.ThumbnailStripPosition = ThumbnailStripPosition;
         s.AutoHideControls = AutoHideControls;
         s.SlideshowIntervalSeconds = Math.Clamp(SlideshowIntervalSeconds, 1, 60);
-        s.SeekStepSeconds = Math.Clamp(SeekStepSeconds, 1, 120);
+        s.SeekStepSeconds = Math.Clamp(SeekStepSeconds, 1, 30); // согласовано с [Range] и слайдером
         s.FrameByFrameSeek = FrameByFrameSeek;
         s.MatchExplorerSort = MatchExplorerSort;
         s.IntegrateShell = IntegrateShell;

@@ -74,15 +74,9 @@ public partial class VideoViewerView : UserControl
                 vm.Start();
                 FocusHostWindow();
             }
-            // Перепривязываем _mainVm на случай, если окно/VM сменились
-            var newMainVm = Window.GetWindow(this)?.DataContext as MainViewModel;
-            if (newMainVm != null && newMainVm != _mainVm)
-            {
-                if (_mainVm != null) _mainVm.PropertyChanged -= OnMainVmPropertyChanged;
-                _mainVm = newMainVm;
-                _mainVm.PropertyChanged += OnMainVmPropertyChanged;
-                UpdateCloneButton();
-            }
+            // Перепривязываем _mainVm на случай, если окно/VM сменились (идемпотентно).
+            AttachMainVm(Window.GetWindow(this)?.DataContext as MainViewModel);
+            UpdateCloneButton();
         }
     }
 
@@ -93,9 +87,10 @@ public partial class VideoViewerView : UserControl
         ShowControls();
         _vm.Start();
         Dispatcher.BeginInvoke(new Action(FocusHostWindow), DispatcherPriority.Loaded);
-        _mainVm = Window.GetWindow(this)?.DataContext as MainViewModel;
+        // Идемпотентная привязка: при reuse-сценарии OnDataContextChanged мог уже подписать
+        // тот же _mainVm — без этого было два += против одного -= (утечка View через singleton).
+        AttachMainVm(Window.GetWindow(this)?.DataContext as MainViewModel);
         AppLog.Write($"VideoViewerView.OnLoaded: _mainVm={_mainVm != null}");
-        if (_mainVm != null) _mainVm.PropertyChanged += OnMainVmPropertyChanged;
         UpdateInfo();
         UpdateCloneButton();
     }
@@ -432,14 +427,16 @@ public partial class VideoViewerView : UserControl
         }
     }
 
-    private void DetachMainVm()
+    /// <summary>Идемпотентно переподписаться на нужный MainViewModel (число += всегда = числу -=).</summary>
+    private void AttachMainVm(MainViewModel? vm)
     {
-        if (_mainVm != null)
-        {
-            _mainVm.PropertyChanged -= OnMainVmPropertyChanged;
-            _mainVm = null;
-        }
+        if (ReferenceEquals(vm, _mainVm)) return; // уже привязаны к этому VM
+        if (_mainVm != null) _mainVm.PropertyChanged -= OnMainVmPropertyChanged;
+        _mainVm = vm;
+        if (_mainVm != null) _mainVm.PropertyChanged += OnMainVmPropertyChanged;
     }
+
+    private void DetachMainVm() => AttachMainVm(null);
 
     private void OnMainVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {

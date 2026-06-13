@@ -106,12 +106,16 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase, IDisposable
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher == null) return;
 
+        // Локальная ссылка на таймер ИМЕННО этой загрузки — чтобы хвост устаревшей загрузки
+        // не остановил/не обнулил таймер новой (перекрывающиеся SetItemsAsync при быстрых мутациях).
+        DispatcherTimer? localTimer = null;
         await dispatcher.InvokeAsync(() =>
         {
             _thumbBatchTimer?.Stop();
-            _thumbBatchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-            _thumbBatchTimer.Tick += (_, _) => FlushThumbnailQueue();
-            _thumbBatchTimer.Start();
+            localTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+            localTimer.Tick += (_, _) => FlushThumbnailQueue();
+            _thumbBatchTimer = localTimer;
+            localTimer.Start();
         });
 
         // Сначала миниатюра текущего файла — чтобы пользователь сразу видел, куда попал.
@@ -158,8 +162,11 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase, IDisposable
         await dispatcher.InvokeAsync(() =>
         {
             FlushThumbnailQueue();
-            _thumbBatchTimer?.Stop();
-            _thumbBatchTimer = null;
+            localTimer?.Stop();
+            // Обнуляем поле только если это всё ещё НАШ таймер — иначе перекрывающаяся
+            // загрузка уже поставила свой, и его трогать нельзя.
+            if (ReferenceEquals(_thumbBatchTimer, localTimer))
+                _thumbBatchTimer = null;
         });
     }
 

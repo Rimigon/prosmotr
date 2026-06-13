@@ -80,6 +80,11 @@ public sealed partial class MainViewModel
             _nav.SetItems(result.Items, result.StartIndex);
             AppLog.Write($"[Perf] OpenPathAsync total ({Path.GetFileName(path)}): {sw.ElapsedMilliseconds} ms");
         }
+        catch (OperationCanceledException)
+        {
+            // Открытие отменено более новым запросом (другой путь / pipe) — это не ошибка,
+            // не логируем как ERROR и не показываем тост.
+        }
         catch (Exception ex)
         {
             AppLog.Error("OpenPathAsync", ex);
@@ -117,7 +122,10 @@ public sealed partial class MainViewModel
         // 2) Реальный порядок открытого окна Проводника — повторяет ЛЮБУЮ сортировку Windows.
         if (_settings.Settings.MatchExplorerSort && !string.IsNullOrEmpty(folder))
         {
-            var explorerTask = Task.Run(() =>
+            // ExplorerSortReader работает с Shell-COM (STA-only). Запускаем на STA-потоке,
+            // а не на MTA-потоке пула (Task.Run) — иначе маршалинг через прокси даёт
+            // нестабильные/пустые результаты.
+            var explorerTask = StaTask.Run(() =>
             {
                 try
                 {
@@ -169,6 +177,9 @@ public sealed partial class MainViewModel
 
     private void PersistAndApplySort()
     {
+        // Сортировка меняет порядок → зафиксированный _lastDeletedIndex устаревает,
+        // восстановление вставило бы файл не на своё место. Инвалидируем undo.
+        ClearUndoState();
         _settings.Settings.SortBy = SelectedSortField;
         _settings.Settings.SortDescending = SortDescending;
         // Запоминаем выбор пользователя для текущей папки — он перекрывает Проводник при след. открытии.
