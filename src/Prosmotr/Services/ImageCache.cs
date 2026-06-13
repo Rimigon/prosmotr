@@ -41,13 +41,15 @@ public sealed class ImageCache : IImageCache
                 else
                 {
                     Touch(path);
-                    return existing.Task;
+                    return ForCaller(existing.Task, ct);
                 }
             }
 
+            // Декодируем под собственным токеном записи (cts), НЕ привязывая внешний ct вызывающего:
+            // кэш — singleton, его задача общая для всех. Иначе отмена ct первого вызывающего
+            // (навигация ушла дальше) отменила бы декодирование и для всех последующих.
             var cts = new CancellationTokenSource();
-            var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
-            var task = _decoder.LoadAsync(path, 0, linked.Token);
+            var task = _decoder.LoadAsync(path, 0, cts.Token);
 
             var entry = new CacheEntry { Task = task, Cts = cts };
             _map[path] = entry;
@@ -57,13 +59,16 @@ public sealed class ImageCache : IImageCache
             {
                 if (t.IsCompletedSuccessfully && t.Result is System.Windows.Media.Imaging.BitmapSource bmp)
                     entry.EstimatedBytes = (long)bmp.PixelWidth * bmp.PixelHeight * bmp.Format.BitsPerPixel / 8;
-                linked.Dispose();
             }, TaskScheduler.Default);
 
             Trim();
-            return task;
+            return ForCaller(task, ct);
         }
     }
+
+    /// <summary>Применить отмену вызывающего к ожиданию, не трогая саму кэшированную задачу.</summary>
+    private static Task<ImageSource?> ForCaller(Task<ImageSource?> task, CancellationToken ct)
+        => ct.CanBeCanceled ? task.WaitAsync(ct) : task;
 
     public bool TryGetLoaded(string path, out ImageSource? image)
     {

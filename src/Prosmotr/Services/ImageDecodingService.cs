@@ -44,9 +44,12 @@ public sealed class ImageDecodingService : IImageDecodingService
     private static ImageSource LoadWithMagick(string path, int decodePixelWidth)
     {
         using var image = new MagickImage(path);
-        if (decodePixelWidth > 0 && image.Width > (uint)decodePixelWidth)
+        // Уменьшаем для миниатюры, если ЛЮБОЕ измерение больше бокса (иначе высокое узкое
+        // изображение декодировалось бы в полный размер — лишняя память для thumbnail).
+        var box = (uint)decodePixelWidth;
+        if (decodePixelWidth > 0 && (image.Width > box || image.Height > box))
         {
-            var geo = new MagickGeometry((uint)decodePixelWidth, (uint)decodePixelWidth)
+            var geo = new MagickGeometry(box, box)
             {
                 IgnoreAspectRatio = false // вписать в квадрат, сохранив пропорции
             };

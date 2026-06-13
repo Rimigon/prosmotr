@@ -41,6 +41,9 @@ dotnet run   --project src\Prosmotr\Prosmotr.csproj
 
 # Публикация в папку app\ (см. критичный нюанс ниже!)
 dotnet publish src\Prosmotr\Prosmotr.csproj -c Release -o app
+
+# Юнит-тесты (чистая логика: навигация, сортировка, форматы, недавние)
+dotnet test tests\Prosmotr.Tests\Prosmotr.Tests.csproj
 ```
 
 - Решение: `Prosmotr.sln`. Платформа решения — Any CPU, но компилируется под **x64**
@@ -149,6 +152,10 @@ src/Prosmotr/
                                DisplayConfigApi (CCD: QueryDisplayConfig / SetDisplayConfig P/Invoke)
   Resources/                 — иконка app.ico, темы (AppResources.xaml)
 app/                         — ⚠️ опубликованная копия (в .gitignore), на неё ведёт ярлык
+tests/Prosmotr.Tests/        — xUnit-тесты чистой логики (net8.0-windows, x64): NavigationService,
+                               MediaLibraryService.Sort (+ StableSort), SupportedFormats,
+                               NaturalStringComparer, RecentFilesService. НЕ грузят нативы
+                               LibVLC/Magick и не поднимают WPF Application — быстрые, headless.
 ```
 
 ---
@@ -581,6 +588,123 @@ Magick.NET (конвертация в **BMP** в памяти — раньше �
   ExplorerSortReader.TryGetOrderedPaths(...))` мог fault, если COM Explorer выбросил.
   Необработанный faulted task приводил к краху `OpenPathAsync`. Обёрнуто в `try/catch`,
   возвращаем `null` при ошибке.
+
+---
+
+### 5.19. Аудит P4 — гонки, утечки и устойчивость
+
+Итерация по результатам полного аудита (сервисы, VM, infrastructure, App/Views):
+
+- **`ImageCache`: внешний `ct` больше НЕ привязывается к кэшируемой задаче.** Кэш — singleton,
+  и его `Task` общий для всех вызывающих. Раньше `CreateLinkedTokenSource(ct, cts.Token)`
+  привязывал токен **первого** вызывающего к задаче в кэше: когда навигация уходила дальше и
+  его `ct` отменялся, декодирование отменялось и для всех последующих (мигание/повторное
+  декодирование). Теперь декодируем под токеном только из `cts` (живёт с записью кэша), а отмену
+  вызывающего применяем к ожиданию через `task.WaitAsync(ct)` (хелпер `ForCaller`). При отмене
+  вызывающий получает `OperationCanceledException`, сама задача в кэше не страдает.
+  Парно: `ImageViewerViewModel.LoadAsync` ловит `OperationCanceledException` **отдельным** catch
+  (отмена ≠ ошибка), иначе на отменённом кадре мигал бы `HasError`.
+- **`AppLog.Write` потокобезопасен.** Лог пишут UI, STA-потоки удаления/восстановления и фоновые
+  декодеры. `File.AppendAllText` без синхронизации бросал `IOException` под нагрузкой (записи
+  терялись) и конфликтовал с ротацией. Добавлен `lock (_gate)` вокруг всей операции.
+- **`RestoreLastDelete` защищён от повторного входа.** Кнопка «Отменить» есть и на тосте, и на
+  панели; `await RestoreAsync` длительный. Состояние отмены (`_lastDeletedItem`/`_lastDeletedIndex`)
+  теперь забирается и сбрасывается (`ClearUndoState`) **синхронно до** `await` — двойной клик не
+  запустит второе восстановление того же файла.
+- **Single-instance: `ReleaseMutex` только на владеющем экземпляре.** Второй экземпляр создаёт
+  `Mutex(true, …, out isFirstInstance)`, но ownership не получает. `OnExit` вызывал
+  `ReleaseMutex()` всегда → `ApplicationException` (проглатывался). Добавлен флаг `_ownsMutex`.
+- **Пути со спецсимволами (`#`, `%`).** Прежний fallback `new UriBuilder { Path = path }` ломался
+  на `#` (трактуется как фрагмент) — ровно там, где должен был помочь. Теперь:
+  - `VideoPlaybackService.Load` — через `new Media(libVlc, path, FromType.FromPath)` (без URI вообще);
+  - `VideoPlaybackService.AddSubtitleFile` (`AddSlave` требует MRL) и `ImageViewerViewModel.AnimatedSource`
+    (XamlAnimatedGif требует `Uri`) — экранирование `%`→`%25`, затем `#`→`%23`, потом `new Uri`
+    (хелпер `VideoPlaybackService.ToFileUri`). Порядок замен важен (сначала `%`).
+- **Гонка `SwitchTo`/`SavePosition` (видео→видео).** Асинхронные события старого плеера
+  (`Stopped`/`TimeChanged`) могли записать позицию под путём уже **нового** файла. Введён флаг
+  `_switching`: ставится в `SwitchTo` (после сохранения позиции старого файла), снимается в
+  `OnPlaying` нового видео; `SavePosition` подавлен, пока он взведён.
+- **`MainWindow`: `HwndSource` hook снимается при закрытии.** `OnLoaded` добавлял `WndProcHook`
+  через `AddHook`, но `RemoveHook` не вызывался нигде (асимметрия с `ThreadPreprocessMessage`).
+  Источник кэшируется в `_hwndSource`, снимается в `Closed`; `OnLoaded` защищён от повторного хука.
+- **`OpenPathAsync`: проверка отмены перед применением результата.** За время `await` (до 3 с в
+  `ResolveOrderingAsync`) пользователь мог открыть другой путь. Перед `SetItems` добавлен
+  `if (ct.IsCancellationRequested) return;` — иначе побеждал результат, финишировавший последним,
+  а не запрошенный последним.
+- **`RecentFilesService`: атомарная подмена списка.** `Add`/`Clear` мутировали живой
+  `Settings.RecentFiles`, пока дебаунс-таймер `SettingsService` сериализовал `Settings` на фоновом
+  потоке → `InvalidOperationException` внутри `JsonSerializer` (настройки молча не сохранялись).
+  Теперь собирается новый список и присваивается ссылке атомарно.
+- **Атомарная запись `settings.json`/`positions.json` без TOCTOU.** Ветка
+  `File.Exists ? Replace : Move` заменена на `File.Move(tmp, file, overwrite: true)`
+  (MoveFileEx + `MOVEFILE_REPLACE_EXISTING`, атомарно на одном томе).
+- **`ThumbnailStripViewModel` реализует `IDisposable`.** Владеет `CancellationTokenSource` и
+  `DispatcherTimer` (создаётся через `new` в `MainViewModel`). `MainViewModel.Dispose` теперь
+  вызывает `ThumbnailStrip.Dispose()` и `WeakReferenceMessenger.Default.UnregisterAll(this)`.
+  Стартовый интервал слайдшоу в конструкторе клампится `Math.Clamp(…, 1, 60)` (битый settings.json).
+
+### 5.20. Аудит P4 (вторая волна) — сортировка, удаление, декодирование
+
+- **Сортировка устойчива к нетранзитивному `StrCmpLogicalW`.** Натуральная сортировка
+  (`NaturalStringComparer` → WinAPI `StrCmpLogicalW`) на некоторых наборах имён нарушает
+  транзитивность; `List<T>.Sort` (introsort) это детектит и бросает `InvalidOperationException`,
+  обрушивая `ScanAsync`/`BuildFromFolderAsync` → открытие папки падало. Введён
+  `MediaLibraryService.StableSort`: `try { list.Sort(cmp); } catch (InvalidOperationException)` →
+  fallback на `OrderBy(..., Comparer.Create(cmp))` (LINQ не валидирует компаратор так жёстко).
+  Используется во всех трёх местах сортировки (`Sort`, обе ветки `ApplyOrder`).
+- **`FileDeletionService`: таймаут на `_sem.WaitAsync`.** Раньше — без таймаута; при
+  патологическом залипании семафора UI-команда удаления зависла бы навсегда. Теперь
+  `WaitAsync(TimeSpan.FromSeconds(30))`; при неуспехе — `DeleteResult(false, "…занята…")`.
+  `_sem.Release()` вызывается только если семафор реально захвачен (ранний return до try).
+- **`ShellService.OpenWith`: путь в кавычках.** `rundll32 shell32.dll,OpenAs_RunDLL <path>` без
+  кавычек разбивал путь с пробелами на аргументы → диалог «Открыть с помощью» получал обрезанный
+  путь. Путь заключён в `"…"`.
+- **`FilePropertiesViewModel`: `Media(..., FromType.FromPath)`** вместо сломанного
+  `UriBuilder { Path }` (тот же баг с `#`/`%`, что в `VideoPlaybackService`).
+- **`ImageDecodingService` (Magick-миниатюры): порог уменьшения по максимальному измерению.**
+  Условие `image.Width > box` пропускало высокие узкие WEBP/HEIC → полный декод для миниатюры.
+  Теперь `image.Width > box || image.Height > box`.
+- **`App.OnSecondInstance`: guard от гонки с shutdown.** Если named pipe сработал, когда хост
+  уже выгружается, обращение к `Services` бросило бы `ObjectDisposedException`. Добавлена
+  ранняя проверка `_appCts.IsCancellationRequested`.
+- **`ZoomBorder` НЕ трогаем.** «Накопление» `TransformGroup` происходит только для новых
+  экземпляров `Child`, а `Image` здесь переиспользуется (проверка `ReferenceEquals` сохраняет
+  трансформ). Очистка `RenderTransform` при detach сломала бы зум при переключении фото.
+- **`DisplayTopologyService.OnDisplaySettingsChanged`: сравнение с КЭШЕМ `_lastCanToggle`.**
+  Раньше `wasCanToggle`/`wasCanClone` вычислялись «на лету» из текущего числа мониторов, которое
+  к моменту `WM_DISPLAYCHANGE` уже изменилось → `было != стало` всегда false, событие
+  `TopologyChanged` не поднималось, и кнопка дублирования не активировалась/деактивировалась при
+  подключении/отключении второго монитора. Теперь предыдущее значение `CanToggle` хранится в поле
+  `_lastCanToggle` (инициализируется в конструкторе, обновляется в `EnableClone`/`RestoreExtend`),
+  событие поднимается только при реальном изменении.
+- **`SupportedFormats.AllExtensions`: `Distinct(StringComparer.OrdinalIgnoreCase)`** — дефенсив от
+  дубликатов расширений в разном регистре (наборы — case-insensitive, `Distinct` по умолчанию — нет).
+
+### 5.21. Юнит-тесты (P4) — `tests/Prosmotr.Tests`
+
+Появился первый тестовый проект (раньше тестов не было). **Что важно знать:**
+- **Только чистая логика, без UI/нативов.** Тесты НЕ грузят LibVLC/Magick и НЕ создают WPF
+  `Application` — поэтому быстрые и headless. Покрыты: `NavigationService` (индексы при
+  remove/insert, циклическая навигация, `ReorderPreservingCurrent`), `MediaLibraryService.Sort`
+  (натуральная сортировка, убывание, по размеру/дате + регрессионный тест устойчивости
+  `StableSort` к нетранзитивному `StrCmpLogicalW` на 2000 именах), `SupportedFormats`
+  (классификация, `AllExtensions` без дублей), `NaturalStringComparer`, `RecentFilesService`
+  (дедуп, лимит 15, атомарная подмена ссылки списка, событие `Changed`).
+- **TFM/платформа.** `net8.0-windows` + `PlatformTarget x64` — чтобы ссылаться на основную
+  WPF-сборку (она `net8.0-windows`, x64). `UseWPF=true` в тестовом csproj нужен для совместимости
+  ссылки, но WPF-типы в тестах не инстанцируются.
+- **Фейки вместо моков.** Для `RecentFilesService` используется ручной `FakeSettings :
+  ISettingsService` (in-memory) — без mock-фреймворков.
+- **Seam для путей хранения.** `SettingsService` и `PlaybackPositionStore` принимают
+  необязательный `string? directory` в конструкторе (по умолчанию — `%APPDATA%`/`%LOCALAPPDATA%`).
+  Тесты передают временную папку (`TempDir`, удаляется по `Dispose`) и проверяют атомарную
+  запись, перезагрузку, валидацию битого `settings.json`, round-trip позиций и регистр путей.
+  **DI не меняется:** контейнер `Microsoft.Extensions.DependencyInjection` подставляет
+  значение по умолчанию для optional-параметра — регистрация `AddSingleton` работает как прежде.
+- **Что НЕ покрыто и проверяется вручную (см. §7):** UI, декодирование, COM/Win32 (удаление,
+  clone-режим, fullscreen, ExplorerSortReader), airspace видео.
+- **Запуск:** `dotnet test tests\Prosmotr.Tests\Prosmotr.Tests.csproj`. Если добавляешь логику в
+  сервисы навигации/библиотеки/форматов — добавь тест в рамках того же изменения.
 
 ---
 

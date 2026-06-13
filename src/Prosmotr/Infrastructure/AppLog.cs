@@ -8,8 +8,13 @@ public static class AppLog
     private static readonly string LogFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Prosmotr", "app.log");
 
+    // Лог пишут множество потоков (UI, STA-потоки удаления/восстановления, фоновые декодеры).
+    // Без сериализации параллельные File.AppendAllText бросают IOException и теряют записи.
+    private static readonly object _gate = new();
+
     public static void Write(string message)
     {
+        lock (_gate)
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(LogFile)!);

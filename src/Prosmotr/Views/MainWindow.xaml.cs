@@ -27,6 +27,7 @@ public partial class MainWindow : FluentWindow
     private Point _lastMousePos = new Point(-1, -1);
 
     private FullScreenHelper.State? _fsState;
+    private HwndSource? _hwndSource;
 
     // Пока открыт модальный диалог (настройки/свойства) — глобальный перехват клавиш не работает.
     private bool _suspendHotkeys;
@@ -57,6 +58,11 @@ public partial class MainWindow : FluentWindow
             _chromeHideTimer.Tick -= OnChromeHideTick;
             _chromeHideTimer.Stop();
             ComponentDispatcher.ThreadPreprocessMessage -= OnThreadPreprocessMessage;
+            if (_hwndSource != null)
+            {
+                _hwndSource.RemoveHook(WndProcHook);
+                _hwndSource = null;
+            }
         };
         DragOver += OnDragOver;
         Drop += OnDrop;
@@ -68,9 +74,16 @@ public partial class MainWindow : FluentWindow
         Focus();
         Keyboard.Focus(this);
 
-        var hwnd = new WindowInteropHelper(this).Handle;
-        if (HwndSource.FromHwnd(hwnd) is HwndSource source)
-            source.AddHook(WndProcHook);
+        // Защита от повторного хука: OnLoaded может сработать не один раз.
+        if (_hwndSource == null)
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (HwndSource.FromHwnd(hwnd) is HwndSource source)
+            {
+                _hwndSource = source;
+                source.AddHook(WndProcHook);
+            }
+        }
     }
 
     protected override void OnClosing(CancelEventArgs e)

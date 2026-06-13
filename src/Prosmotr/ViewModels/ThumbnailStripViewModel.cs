@@ -10,7 +10,7 @@ using Prosmotr.Services.Abstractions;
 namespace Prosmotr.ViewModels;
 
 /// <summary>Лента миниатюр текущей папки; выбор миниатюры = переход к файлу.</summary>
-public sealed partial class ThumbnailStripViewModel : ViewModelBase
+public sealed partial class ThumbnailStripViewModel : ViewModelBase, IDisposable
 {
     private const int ThumbSize = 128;
     private const int AddBatchSize = 100;
@@ -149,6 +149,20 @@ public sealed partial class ThumbnailStripViewModel : ViewModelBase
         {
             if (pair.Entry.Thumbnail == null)
                 pair.Entry.Thumbnail = pair.Image;
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = null;
+
+        var timer = _thumbBatchTimer;
+        if (timer != null)
+        {
+            timer.Stop();
+            _thumbBatchTimer = null;
         }
     }
 }

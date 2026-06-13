@@ -29,18 +29,9 @@ public sealed class VideoPlaybackService : IDisposable
     {
         var old = _media;
 
-        Media? media = null;
-        try
-        {
-            media = new Media(_provider.LibVlc, new Uri(path, UriKind.Absolute));
-        }
-        catch (UriFormatException)
-        {
-            // Пути со спецсимволами (#, %) не всегда парсятся как абсолютный URI.
-            // Экранируем локальный путь через file:// URI.
-            var builder = new UriBuilder { Scheme = Uri.UriSchemeFile, Path = path };
-            media = new Media(_provider.LibVlc, builder.Uri);
-        }
+        // FromType.FromPath передаёт локальный путь напрямую — корректно для путей
+        // со спецсимволами (#, %), на которых new Uri(path) бросает UriFormatException.
+        var media = new Media(_provider.LibVlc, path, FromType.FromPath);
 
         _media = media;
         if (startMs > 1000)
@@ -101,18 +92,21 @@ public sealed class VideoPlaybackService : IDisposable
 
     /// <summary>Подключить внешний файл субтитров (.srt/.ass/…) и при необходимости включить его.</summary>
     public bool AddSubtitleFile(string path, bool select)
+        => Player.AddSlave(MediaSlaveType.Subtitle, ToFileUri(path), select);
+
+    /// <summary>Построить корректный file:// URI, экранируя # и % (на них new Uri бросает UriFormatException).</summary>
+    internal static string ToFileUri(string path)
     {
-        Uri uri;
         try
         {
-            uri = new Uri(path, UriKind.Absolute);
+            return new Uri(path, UriKind.Absolute).AbsoluteUri;
         }
         catch (UriFormatException)
         {
-            var builder = new UriBuilder { Scheme = Uri.UriSchemeFile, Path = path };
-            uri = builder.Uri;
+            // Сначала %, потом # — чтобы не задвоить экранирование уже вставленных %25.
+            var escaped = path.Replace("%", "%25").Replace("#", "%23");
+            return new Uri(escaped, UriKind.Absolute).AbsoluteUri;
         }
-        return Player.AddSlave(MediaSlaveType.Subtitle, uri.AbsoluteUri, select);
     }
 
     /// <summary>Сохранить текущий кадр в файл (исходный размер). true — запрос принят.</summary>

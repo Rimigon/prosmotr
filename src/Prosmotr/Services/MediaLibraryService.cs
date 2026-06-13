@@ -55,8 +55,29 @@ public sealed class MediaLibraryService : IMediaLibraryService
     public IReadOnlyList<MediaItem> Sort(IEnumerable<MediaItem> items, SortSpec sort)
     {
         var list = items.ToList();
-        list.Sort(GetComparison(sort));
+        StableSort(list, GetComparison(sort));
         return list;
+    }
+
+    /// <summary>
+    /// Сортировка, устойчивая к нетранзитивному компаратору. <c>StrCmpLogicalW</c>
+    /// (натуральная сортировка) на некоторых наборах имён нарушает транзитивность, и
+    /// <see cref="List{T}.Sort(Comparison{T})"/> (introsort) детектит это и бросает
+    /// <see cref="InvalidOperationException"/>, обрушивая открытие папки. Fallback —
+    /// LINQ-сортировка, которая не валидирует компаратор столь жёстко.
+    /// </summary>
+    private static void StableSort(List<MediaItem> list, Comparison<MediaItem> comparison)
+    {
+        try
+        {
+            list.Sort(comparison);
+        }
+        catch (InvalidOperationException)
+        {
+            var sorted = list.OrderBy(x => x, Comparer<MediaItem>.Create(comparison)).ToList();
+            list.Clear();
+            list.AddRange(sorted);
+        }
     }
 
     private static int IndexOfPath(IReadOnlyList<MediaItem> items, string path)
@@ -110,7 +131,7 @@ public sealed class MediaLibraryService : IMediaLibraryService
             for (int i = 0; i < explicitOrder.Count; i++)
                 index[explicitOrder[i]] = i;
 
-            items.Sort((a, b) =>
+            StableSort(items, (a, b) =>
             {
                 int ia = index.TryGetValue(a.FullPath, out var x) ? x : int.MaxValue;
                 int ib = index.TryGetValue(b.FullPath, out var y) ? y : int.MaxValue;
@@ -120,7 +141,7 @@ public sealed class MediaLibraryService : IMediaLibraryService
         }
         else
         {
-            items.Sort(GetComparison(sort));
+            StableSort(items, GetComparison(sort));
         }
     }
 

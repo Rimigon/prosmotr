@@ -42,7 +42,12 @@ public sealed class FileDeletionService : IFileDeletionService
             }
         }
 
-        await _sem.WaitAsync();
+        // Таймаут на сам семафор: при штатной работе он освобождается максимум за ~10 с
+        // (см. Task.WhenAny ниже), поэтому 30 с — страховка от патологического залипания,
+        // чтобы UI-команда удаления не висела бесконечно.
+        if (!await _sem.WaitAsync(TimeSpan.FromSeconds(30)))
+            return new DeleteResult(false, "Служба удаления занята. Повторите позже.");
+
         Thread thread = null!;
         try
         {

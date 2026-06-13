@@ -120,17 +120,9 @@ public sealed partial class FilePropertiesViewModel : ViewModelBase
     {
         try
         {
-            Uri uri;
-            try
-            {
-                uri = new Uri(_item.FullPath, UriKind.Absolute);
-            }
-            catch (UriFormatException)
-            {
-                var builder = new UriBuilder { Scheme = Uri.UriSchemeFile, Path = _item.FullPath };
-                uri = builder.Uri;
-            }
-            using var media = new Media(_vlc.LibVlc, uri);
+            // FromType.FromPath передаёт локальный путь напрямую — корректно для путей
+            // со спецсимволами (#, %), на которых new Uri(path) бросает UriFormatException.
+            using var media = new Media(_vlc.LibVlc, _item.FullPath, FromType.FromPath);
             await media.Parse(MediaParseOptions.ParseLocal, timeout: 5000);
 
             if (_durationRow != null)

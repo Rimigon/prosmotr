@@ -13,9 +13,11 @@ public sealed class PlaybackPositionStore : IPlaybackPositionStore, IDisposable
     private readonly Dictionary<string, PlaybackPosition> _map;
     private readonly System.Timers.Timer _debounce;
 
-    public PlaybackPositionStore()
+    // directory: переопределяемый каталог хранения (для тестов). DI использует значение
+    // по умолчанию — %LOCALAPPDATA%\Prosmotr (контейнер подставляет optional-параметр).
+    public PlaybackPositionStore(string? directory = null)
     {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Prosmotr");
+        var dir = directory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Prosmotr");
         Directory.CreateDirectory(dir);
         _file = Path.Combine(dir, "positions.json");
         _map = Load();
@@ -62,10 +64,7 @@ public sealed class PlaybackPositionStore : IPlaybackPositionStore, IDisposable
             {
                 var tmp = _file + ".tmp";
                 File.WriteAllText(tmp, JsonSerializer.Serialize(_map));
-                if (File.Exists(_file))
-                    File.Replace(tmp, _file, null);
-                else
-                    File.Move(tmp, _file);
+                File.Move(tmp, _file, overwrite: true); // атомарно на одном томе, без TOCTOU-гонки
             }
             catch { /* не критично */ }
         }

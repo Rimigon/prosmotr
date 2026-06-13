@@ -24,9 +24,11 @@ public sealed class SettingsService : ISettingsService, IDisposable
     public AppSettings Settings { get; private set; }
     public event EventHandler? SettingsChanged;
 
-    public SettingsService()
+    // directory: переопределяемый каталог хранения (для тестов). DI использует значение
+    // по умолчанию — %APPDATA%\Prosmotr (контейнер подставляет optional-параметр).
+    public SettingsService(string? directory = null)
     {
-        _dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Prosmotr");
+        _dir = directory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Prosmotr");
         _file = Path.Combine(_dir, "settings.json");
         Settings = Load();
 
@@ -53,7 +55,8 @@ public sealed class SettingsService : ISettingsService, IDisposable
         return new AppSettings();
     }
 
-    private static void ValidateAndFix(AppSettings settings)
+    // internal (не private) — чтобы покрыть юнит-тестами через InternalsVisibleTo.
+    internal static void ValidateAndFix(AppSettings settings)
     {
         var defaults = new AppSettings();
         foreach (var prop in typeof(AppSettings).GetProperties())
@@ -93,10 +96,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
                 Directory.CreateDirectory(_dir);
                 var tmp = _file + ".tmp";
                 File.WriteAllText(tmp, JsonSerializer.Serialize(Settings, JsonOptions));
-                if (File.Exists(_file))
-                    File.Replace(tmp, _file, null);
-                else
-                    File.Move(tmp, _file);
+                File.Move(tmp, _file, overwrite: true); // атомарно на одном томе, без TOCTOU-гонки
             }
             catch { /* сохранение настроек не критично для работы */ }
         }

@@ -9,6 +9,10 @@ public sealed class DisplayTopologyService : IDisplayTopologyService
     private readonly INotificationService _notify;
     private DisplayConfigApi.DISPLAYCONFIG_PATH_INFO[]? _savedPaths;
     private DisplayConfigApi.DISPLAYCONFIG_MODE_INFO[]? _savedModes;
+    // Кэш доступности toggle между событиями WM_DISPLAYCHANGE. Сравнивать «на лету»
+    // нельзя: CanToggle вычисляется из текущего числа мониторов, которое к моменту события
+    // уже изменилось, поэтому «было != стало» всегда false и событие не поднималось.
+    private bool _lastCanToggle;
 
     public bool IsCloned { get; private set; }
 
@@ -22,6 +26,7 @@ public sealed class DisplayTopologyService : IDisplayTopologyService
     public DisplayTopologyService(INotificationService notify)
     {
         _notify = notify;
+        _lastCanToggle = CanToggle;
     }
 
     public void EnableClone()
@@ -52,6 +57,7 @@ public sealed class DisplayTopologyService : IDisplayTopologyService
             }
 
             IsCloned = true;
+            _lastCanToggle = CanToggle;
             AppLog.Write($"[Clone] IsCloned set to TRUE. CanToggle={CanToggle}");
             TopologyChanged?.Invoke(this, EventArgs.Empty);
             _notify.Show("Экраны дублируются", NotificationKind.Info);
@@ -119,6 +125,7 @@ public sealed class DisplayTopologyService : IDisplayTopologyService
             IsCloned = false;
             _savedPaths = null;
             _savedModes = null;
+            _lastCanToggle = CanToggle;
             AppLog.Write($"[Clone] IsCloned set to FALSE. CanToggle={CanToggle}");
             TopologyChanged?.Invoke(this, EventArgs.Empty);
             _notify.Show("Расширенный режим восстановлен", NotificationKind.Info);
@@ -141,18 +148,18 @@ public sealed class DisplayTopologyService : IDisplayTopologyService
 
     public void OnDisplaySettingsChanged()
     {
-        bool wasCloned = IsCloned;
-        bool wasCanClone = CanClone;
-        bool wasCanToggle = CanToggle;
-
         // НЕ сбрасываем IsCloned автоматически при !CanClone:
         // в clone-режиме GetSystemMetrics(SM_CMONITORS) часто возвращает 1 (один логический монитор),
         // поэтому сброс здесь сломал бы восстановление при shutdown.
-        AppLog.Write($"[Clone] OnDisplaySettingsChanged: IsCloned={IsCloned}, CanClone={CanClone}(SM_CMONITORS={DisplayConfigApi.GetSystemMetrics(DisplayConfigApi.SM_CMONITORS)}), CanToggle={CanToggle}");
+        // Сравниваем с КЭШЕМ предыдущего значения (не «на лету»): к моменту события число
+        // мониторов уже изменилось, поэтому только так ловим подключение/отключение монитора.
+        bool canToggle = CanToggle;
+        AppLog.Write($"[Clone] OnDisplaySettingsChanged: IsCloned={IsCloned}, CanClone={CanClone}(SM_CMONITORS={DisplayConfigApi.GetSystemMetrics(DisplayConfigApi.SM_CMONITORS)}), CanToggle={canToggle}, lastCanToggle={_lastCanToggle}");
 
-        if (wasCloned != IsCloned || wasCanClone != CanClone || wasCanToggle != CanToggle)
+        if (canToggle != _lastCanToggle)
         {
-            AppLog.Write($"[Clone] OnDisplaySettingsChanged: RAISING TopologyChanged (wasCloned={wasCloned},wasCanClone={wasCanClone},wasCanToggle={wasCanToggle})");
+            _lastCanToggle = canToggle;
+            AppLog.Write("[Clone] OnDisplaySettingsChanged: RAISING TopologyChanged");
             TopologyChanged?.Invoke(this, EventArgs.Empty);
         }
     }

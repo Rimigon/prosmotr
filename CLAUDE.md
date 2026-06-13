@@ -19,6 +19,9 @@ dotnet run --project src\Prosmotr\Prosmotr.csproj
 
 # Publish to app/ (required for desktop shortcut to see changes)
 dotnet publish src\Prosmotr\Prosmotr.csproj -c Release -o app
+
+# Run unit tests (pure logic: navigation, sorting, formats, recent files)
+dotnet test tests\Prosmotr.Tests\Prosmotr.Tests.csproj
 ```
 
 **Important publishing constraints:**
@@ -26,7 +29,7 @@ dotnet publish src\Prosmotr\Prosmotr.csproj -c Release -o app
 - **Do not use single-file publish** — it breaks LibVLC native plugin loading. Framework-dependent publish only.
 - The project builds as **x64** (`<PlatformTarget>x64</PlatformTarget>`) because LibVLC native plugins live in `libvlc\win-x64\`.
 
-There are **no test projects** in this repository.
+Unit tests live in `tests\Prosmotr.Tests\` (xUnit, `net8.0-windows`/x64). They cover **pure logic only** — `NavigationService` (index math on remove/insert, cyclic nav), `MediaLibraryService.Sort` (natural sort + `StableSort` resilience), `SupportedFormats`, `NaturalStringComparer`, `RecentFilesService` (dedup/cap/atomic list swap). They do **not** load LibVLC/Magick natives or spin up a WPF `Application`, so they run fast and headless. UI, decoding, and COM/Win32 paths are not covered by tests — verify those manually (see `AGENTS.md` §7).
 
 ## High-Level Architecture
 

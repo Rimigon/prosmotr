@@ -43,8 +43,9 @@ public sealed class ShellService : IShellService
         {
             var safe = path.Replace("\"", "\\\"");
             // Системный диалог «Открыть с помощью…» (надёжно работает через rundll32).
+            // Путь обязательно в кавычках — иначе пробелы разбивают его на аргументы.
             Process.Start(new ProcessStartInfo("rundll32.exe",
-                $"shell32.dll,OpenAs_RunDLL {safe}") { UseShellExecute = true });
+                $"shell32.dll,OpenAs_RunDLL \"{safe}\"") { UseShellExecute = true });
         }
         catch { }
     }

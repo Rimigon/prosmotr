@@ -132,7 +132,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _nav.ListChanged += (_, _) => OnListChanged();
         _settings.SettingsChanged += (_, _) => OnSettingsChanged();
 
-        _slideshowTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(_settings.Settings.SlideshowIntervalSeconds) };
+        _slideshowTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(Math.Clamp(_settings.Settings.SlideshowIntervalSeconds, 1, 60)) };
         _slideshowTimer.Tick += (_, _) => _nav.MoveNext();
 
         WeakReferenceMessenger.Default.Register<MainViewModel, ToggleFullScreenMessage>(
@@ -319,6 +319,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _openCts?.Cancel();
         _openCts?.Dispose();
         _slideshowTimer.Stop();
+        ThumbnailStrip.Dispose();
+        WeakReferenceMessenger.Default.UnregisterAll(this);
 
         if (CurrentContent is IDisposable disposable)
         {

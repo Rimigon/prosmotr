@@ -82,15 +82,18 @@ public sealed partial class MainViewModel
     [RelayCommand(CanExecute = nameof(CanRestore))]
     private async Task RestoreLastDelete()
     {
+        // Забираем состояние отмены синхронно до await: иначе повторный клик
+        // (кнопка есть и на тосте, и на панели) запустит второе восстановление того же файла.
         var item = _lastDeletedItem;
         if (item == null) return;
+        var index = _lastDeletedIndex;
+        ClearUndoState();
 
         var ok = await RecycleBinRestore.RestoreAsync(item.FullPath);
         if (ok)
         {
             var restored = _library.CreateItem(item.FullPath) ?? item;
-            _nav.InsertAt(restored, _lastDeletedIndex);
-            ClearUndoState();
+            _nav.InsertAt(restored, index);
             _notify.Show($"«{restored.FileName}» восстановлен.", NotificationKind.Success);
         }
         else

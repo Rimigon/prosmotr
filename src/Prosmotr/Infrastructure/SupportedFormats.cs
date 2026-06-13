@@ -49,5 +49,6 @@ public static class SupportedFormats
 
     /// <summary>Все поддерживаемые расширения (для диалога открытия и ассоциаций).</summary>
     public static IEnumerable<string> AllExtensions =>
-        ImageExtensions.Concat(AnimatedImageExtensions).Concat(VideoExtensions).Distinct();
+        ImageExtensions.Concat(AnimatedImageExtensions).Concat(VideoExtensions)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
 }

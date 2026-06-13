@@ -23,6 +23,7 @@ public partial class App : Application
 
     private IHost? _host;
     private Mutex? _mutex;
+    private bool _ownsMutex;
     private readonly CancellationTokenSource _appCts = new();
 
     public IServiceProvider Services => _host!.Services;
@@ -42,6 +43,7 @@ public partial class App : Application
 
         // Single-instance: если приложение уже запущено — передаём путь ему и выходим.
         _mutex = new Mutex(true, MutexName, out bool isFirstInstance);
+        _ownsMutex = isFirstInstance;
         if (!isFirstInstance)
         {
             SendArgsToRunningInstance(e.Args);
@@ -151,6 +153,9 @@ public partial class App : Application
 
     private void OnSecondInstance(string path)
     {
+        // Гонка с завершением: pipe мог сработать, когда хост уже выгружается —
+        // обращение к Services тогда бросило бы ObjectDisposedException.
+        if (_appCts.IsCancellationRequested) return;
         try
         {
             var vm = Services.GetRequiredService<MainViewModel>();
@@ -269,7 +274,9 @@ public partial class App : Application
         try { _host?.Services.GetService<IPlaybackPositionStore>()?.Flush(); } catch { }
         // Корректно освобождаем singletons (SettingsService, PlaybackPositionStore, LibVlcProvider).
         try { _host?.Dispose(); } catch { }
-        try { _mutex?.ReleaseMutex(); } catch { }
+        // ReleaseMutex допустим только на владеющем экземпляре; на втором (не получившем
+        // ownership) он бросил бы ApplicationException.
+        if (_ownsMutex) { try { _mutex?.ReleaseMutex(); } catch { } }
         try { _mutex?.Dispose(); } catch { }
         try { _appCts.Dispose(); } catch { }
         base.OnExit(e);

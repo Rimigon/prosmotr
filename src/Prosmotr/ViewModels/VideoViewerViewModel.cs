@@ -35,6 +35,9 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     private float _pendingRate = 1f;
     private bool _started;
     private bool _disposed;
+    // На время переключения видео→видео подавляем SavePosition: асинхронные события
+    // старого плеера (Stopped/TimeChanged) иначе запишут позицию под путём нового файла.
+    private bool _switching;
 
     public MediaItem Item { get; private set; }
     public MediaPlayer Player => _playback.Player;
@@ -111,6 +114,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         if (_disposed) return;
 
         SavePosition();           // сохранить позицию текущего видео
+        _switching = true;        // далее SavePosition подавлен до старта нового видео
         Item = item;
         OnPropertyChanged(nameof(Item));
         IsEnded = false;
@@ -327,6 +331,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     {
         IsPlaying = true;
         IsEnded = false;
+        _switching = false; // новое видео реально стартовало — снимаем подавление SavePosition
         // Применяем отложенные параметры, когда воспроизведение реально стартовало.
         _playback.Rate = _pendingRate;
         Rate = _pendingRate;
@@ -356,7 +361,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
     private void SavePosition()
     {
-        if (_disposed || IsEnded || LengthMs <= 0) return;
+        if (_disposed || _switching || IsEnded || LengthMs <= 0) return;
         var time = (long)PositionMs;
         if (time <= 1000) return;
         float? rate = _settings.Settings.RememberRatePerFile ? Rate : null;

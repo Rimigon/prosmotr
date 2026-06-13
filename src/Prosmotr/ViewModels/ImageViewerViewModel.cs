@@ -29,8 +29,9 @@ public sealed partial class ImageViewerViewModel : ViewModelBase, IDisposable
             try { return new Uri(Item.FullPath, UriKind.Absolute); }
             catch (UriFormatException)
             {
-                var builder = new UriBuilder { Scheme = Uri.UriSchemeFile, Path = Item.FullPath };
-                return builder.Uri;
+                // # / % в пути ломают new Uri. Экранируем (сначала %, потом #).
+                var escaped = Item.FullPath.Replace("%", "%25").Replace("#", "%23");
+                return new Uri(escaped, UriKind.Absolute);
             }
         }
     }
@@ -110,6 +111,10 @@ public sealed partial class ImageViewerViewModel : ViewModelBase, IDisposable
             if (ct.IsCancellationRequested) return;
             Image = img;
             HasError = img == null;
+        }
+        catch (OperationCanceledException)
+        {
+            // Загрузку отменили (переключились на другое фото) — это не ошибка.
         }
         catch
         {

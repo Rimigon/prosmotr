@@ -50,4 +50,9 @@
     <Resource Include="Resources\Icons\app.ico" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Юнит-тесты видят internal-члены (напр. SettingsService.ValidateAndFix). -->
+    <InternalsVisibleTo Include="Prosmotr.Tests" />
+  </ItemGroup>
+
 </Project>

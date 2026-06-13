@@ -65,6 +65,10 @@ public sealed partial class MainViewModel
                 return;
             }
 
+            // За время await пользователь мог инициировать другое открытие (новый _openCts).
+            // Не затираем актуальную галерею устаревшим результатом.
+            if (ct.IsCancellationRequested) return;
+
             if (result.Items.Count == 0)
             {
                 _nav.Clear();
