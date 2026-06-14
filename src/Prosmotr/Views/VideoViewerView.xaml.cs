@@ -14,8 +14,12 @@ public partial class VideoViewerView : UserControl
     private readonly DispatcherTimer _hideTimer;
     private readonly DispatcherTimer _clickTimer;
     private readonly DispatcherTimer _pauseShowTimer;
+    private readonly DispatcherTimer _seekThrottle;
     private VideoViewerViewModel? _vm;
     private bool _suppressSlider;
+    private bool _isSeekDragging;
+    private double _pendingSeekMs;
+    private bool _hasPendingSeek;
     private bool _controlsShown = true;
     private MainViewModel? _mainVm;
     private ContextMenu? _audioMenu;
@@ -41,6 +45,12 @@ public partial class VideoViewerView : UserControl
         _pauseShowTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(280) };
         _pauseShowTimer.Tick += OnPauseShowTimerTick;
 
+        // Дросселирование перемоток при перетаскивании ползунка: без него каждое
+        // микродвижение слайдера слало бы отдельный seek в VLC, и декодер захлёбывался
+        // (визуальные лаги/артефакты). Так перемотка идёт не чаще ~раз в 120 мс.
+        _seekThrottle = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        _seekThrottle.Tick += OnSeekThrottleTick;
+
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         DataContextChanged += OnDataContextChanged;
@@ -48,6 +58,13 @@ public partial class VideoViewerView : UserControl
         Overlay.MouseMove += (_, _) => ShowControls();
         ClickArea.MouseLeftButtonDown += OnClickAreaDown;
         PositionSlider.ValueChanged += OnSliderValueChanged;
+        // Начало/конец перетаскивания «бегунка» слайдера (routed-события Thumb всплывают к Slider).
+        PositionSlider.AddHandler(
+            System.Windows.Controls.Primitives.Thumb.DragStartedEvent,
+            new System.Windows.Controls.Primitives.DragStartedEventHandler(OnSeekDragStarted));
+        PositionSlider.AddHandler(
+            System.Windows.Controls.Primitives.Thumb.DragCompletedEvent,
+            new System.Windows.Controls.Primitives.DragCompletedEventHandler(OnSeekDragCompleted));
 
         // Контекстное меню по правому клику (аудио, субтитры, скорость, действия с файлом).
         Overlay.ContextMenu = new ContextMenu();
@@ -103,6 +120,10 @@ public partial class VideoViewerView : UserControl
         _clickTimer.Tick -= OnSingleClickElapsed;
         _pauseShowTimer.Stop();
         _pauseShowTimer.Tick -= OnPauseShowTimerTick;
+        _seekThrottle.Stop();
+        _seekThrottle.Tick -= OnSeekThrottleTick;
+        _isSeekDragging = false;
+        _hasPendingSeek = false;
 
         // Закрываем и освобождаем меню, чтобы не держать делегаты и COM-ссылки.
         _speedMenu?.SetValue(ContextMenu.IsOpenProperty, false);
@@ -141,6 +162,9 @@ public partial class VideoViewerView : UserControl
 
         if (e.PropertyName == nameof(VideoViewerViewModel.PositionMs))
         {
+            // Во время перетаскивания не двигаем ползунок под курсором пользователя —
+            // позицией управляет drag, а события плеера подхватятся после отпускания.
+            if (_isSeekDragging) return;
             _suppressSlider = true;
             PositionSlider.Value = _vm.PositionMs;
             _suppressSlider = false;
@@ -166,7 +190,40 @@ public partial class VideoViewerView : UserControl
     private void OnSliderValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_suppressSlider || _vm == null) return;
-        _vm.SeekTo(e.NewValue);
+        if (_isSeekDragging)
+        {
+            // Перетаскивание: копим целевую позицию и перематываем дросселированно
+            // (см. OnSeekThrottleTick), чтобы не заваливать декодер VLC потоком seek'ов.
+            _pendingSeekMs = e.NewValue;
+            _hasPendingSeek = true;
+            if (!_seekThrottle.IsEnabled) _seekThrottle.Start();
+        }
+        else
+        {
+            // Клик по дорожке (IsMoveToPointEnabled) — одиночная перемотка.
+            _vm.SeekTo(e.NewValue);
+        }
+    }
+
+    private void OnSeekDragStarted(object sender, System.Windows.Controls.Primitives.DragStartedEventArgs e)
+        => _isSeekDragging = true;
+
+    private void OnSeekDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        _isSeekDragging = false;
+        _seekThrottle.Stop();
+        _hasPendingSeek = false;
+        _vm?.SeekTo(PositionSlider.Value); // финальная точная перемотка на отпущенную позицию
+    }
+
+    private void OnSeekThrottleTick(object? sender, EventArgs e)
+    {
+        _seekThrottle.Stop();
+        if (_hasPendingSeek && _vm != null)
+        {
+            _hasPendingSeek = false;
+            _vm.SeekTo(_pendingSeekMs);
+        }
     }
 
     // --- Клик по области видео: один — пауза, двойной — полный экран ---
