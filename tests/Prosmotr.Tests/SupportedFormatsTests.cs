@@ -29,13 +29,6 @@ public sealed class SupportedFormatsTests
         Assert.False(SupportedFormats.IsSupported(@"C:\x\a.exe"));
     }
 
-    [Fact]
-    public void RequiresMagick_OnlyForWebpHeicHeif()
-    {
-        Assert.True(SupportedFormats.RequiresMagick(@"C:\x\a.webp"));
-        Assert.True(SupportedFormats.RequiresMagick(@"C:\x\a.HEIC"));
-        Assert.False(SupportedFormats.RequiresMagick(@"C:\x\a.jpg"));
-    }
 
     [Fact]
     public void AllExtensions_HasNoDuplicates_AndCoversCategories()
@@ -46,5 +39,16 @@ public sealed class SupportedFormatsTests
         Assert.Contains(".jpg", all);
         Assert.Contains(".gif", all);
         Assert.Contains(".mp4", all);
+    }
+
+    [Fact]
+    public void RequiresMagick_ForProblematicFormats()
+    {
+        // JPEG через Magick.NET, чтобы обойти баг WPF с некоторыми embedded ICC-профилями.
+        Assert.True(SupportedFormats.RequiresMagick(@"C:\x\a.jpg"));
+        Assert.True(SupportedFormats.RequiresMagick(@"C:\x\a.jpeg"));
+        Assert.True(SupportedFormats.RequiresMagick(@"C:\x\a.webp"));
+        Assert.True(SupportedFormats.RequiresMagick(@"C:\x\a.HEIC"));
+        Assert.False(SupportedFormats.RequiresMagick(@"C:\x\a.png"));
     }
 }

@@ -231,6 +231,16 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
     // --- Аудиодорожки, субтитры, снимок кадра ---
 
+    /// <summary>
+    /// Остановить плеер и освободить Media для удаляемого файла.
+    /// VM остаётся живым — UpdateCurrentContent сам переключит на следующий файл.
+    /// </summary>
+    public void StopAndRelease()
+    {
+        if (_disposed) return;
+        _playback.StopAndRelease();
+    }
+
     /// <summary>Текущие аудиодорожки видео (для меню кнопки звука).</summary>
     public IReadOnlyList<TrackChoice> GetAudioTracks()
     {

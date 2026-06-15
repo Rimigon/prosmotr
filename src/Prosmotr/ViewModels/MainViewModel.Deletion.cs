@@ -36,6 +36,14 @@ public sealed partial class MainViewModel
                 if (!confirmed) return;
             }
 
+            // Видео держит файловый handle в LibVLC. Останавливаем плеер и освобождаем Media,
+            // чтобы файл можно было переместить в Корзину / удалить без sharing violation.
+            if (cur.IsVideo && CurrentContent is VideoViewerViewModel videoVm)
+            {
+                videoVm.StopAndRelease();
+                await Task.Delay(250);
+            }
+
             var result = await _deletion.DeleteAsync(cur.FullPath, permanent);
             if (result.Success)
             {

@@ -20,9 +20,32 @@ public partial class ImageViewerView : UserControl
         DataContextChanged += OnDataContextChanged;
         Unloaded += OnUnloaded;
 
+        // Отслеживаем реальное появление Source у Image, чтобы пересчитать зум
+        // даже в случаях, когда PropertyChanged VM пришёл до привязки обработчика
+        // (например, синхронный кэш-хит при смене фото в переиспользуемом View).
+        AddSourceChangedHandler(StaticImage);
+        AddSourceChangedHandler(AnimatedImage);
+
         // Контекстное меню по правому клику (поворот, масштаб, копирование, действия с файлом).
         ContextMenu = new ContextMenu();
         ContextMenuOpening += OnContextMenuOpening;
+    }
+
+    private void AddSourceChangedHandler(Image image)
+    {
+        DependencyPropertyDescriptor
+            .FromProperty(Image.SourceProperty, typeof(Image))
+            .AddValueChanged(image, OnImageSourceChanged);
+    }
+
+    private void OnImageSourceChanged(object? sender, EventArgs e)
+    {
+        // Source мог обновиться на null при смене VM — тогда ничего не делаем.
+        if (sender is Image { Source: not null })
+        {
+            // Ждём, пока binding и макет применятся, затем вписываем изображение.
+            Dispatcher.BeginInvoke(() => Zoom.SetMode(ImageViewMode.Fit), DispatcherPriority.Render);
+        }
     }
 
     private MainViewModel? MainVm => Window.GetWindow(this)?.DataContext as MainViewModel;
@@ -90,6 +113,11 @@ public partial class ImageViewerView : UserControl
             {
                 Zoom.ResetContent(ImageViewMode.Fit);
                 Zoom.SetMode(ImageViewMode.Fit);
+
+                // Страховка: если binding уже успел применить Source раньше
+                // Render-приоритета (синхронный кэш-хит), пересчитываем зум ещё раз.
+                if (StaticImage.Source != null || AnimatedImage.Source != null)
+                    Zoom.SetMode(ImageViewMode.Fit);
             }, DispatcherPriority.Render);
         }
     }

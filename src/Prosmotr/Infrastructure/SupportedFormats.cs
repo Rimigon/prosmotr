@@ -26,9 +26,13 @@ public static class SupportedFormats
         ".wmv", ".flv", ".mpg", ".mpeg", ".ts", ".m2ts"
     };
 
-    // Форматы без нативного WPF-декодера — декодируем через Magick.NET
+    // Форматы, которые декодируем через Magick.NET вместо нативного WPF.
+    // JPEG добавлен из-за бага WPF: BitmapImage падает на JPG с некоторыми
+    // embedded ICC color profiles (ColorContext.GetColorContextsHelper).
+    // Magick нормализует профиль перед отдачей WPF.
     public static readonly HashSet<string> MagickImageExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
+        ".jpg", ".jpeg", ".jpe", ".jfif",
         ".webp", ".heic", ".heif"
     };
 

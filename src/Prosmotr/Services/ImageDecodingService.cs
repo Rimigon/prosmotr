@@ -22,7 +22,11 @@ public sealed class ImageDecodingService : IImageDecodingService
             }
             catch (OperationCanceledException) { throw; }
             catch (OutOfMemoryException) { throw; }
-            catch { return null; }
+            catch (Exception ex)
+            {
+                AppLog.Error($"ImageDecodingService.LoadAsync path={path}", ex);
+                return null;
+            }
         }, ct);
 
     private static ImageSource LoadNative(string path, int decodePixelWidth)
@@ -44,6 +48,14 @@ public sealed class ImageDecodingService : IImageDecodingService
     private static ImageSource LoadWithMagick(string path, int decodePixelWidth)
     {
         using var image = new MagickImage(path);
+
+        // Сбрасываем «проблемные» ICC-профили, которые ломают WPF BitmapImage
+        // (ColorContext.GetColorContextsHelper падает на некоторых embedded-профилях).
+        // RGB-профили без калибровки WPF понимает сам; CMYK/пустые — нет.
+        if (image.ColorSpace == ColorSpace.CMYK)
+            image.ColorSpace = ColorSpace.sRGB;
+        image.RemoveProfile("icc");
+
         // Уменьшаем для миниатюры, если ЛЮБОЕ измерение больше бокса (иначе высокое узкое
         // изображение декодировалось бы в полный размер — лишняя память для thumbnail).
         var box = (uint)decodePixelWidth;

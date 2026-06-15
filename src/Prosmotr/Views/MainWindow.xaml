@@ -143,9 +143,12 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- Контент (фото / видео / пусто) -->
+            <!-- Контент (фото / видео / пусто).
+                 Явный фон закрывает возможный белый промежуток между сменой View
+                 (особенно при уничтожении/создании нативного VideoView HWND). -->
             <ContentControl x:Name="ContentHost" Grid.Row="0" Grid.Column="1"
-                            Content="{Binding CurrentContent}" />
+                            Content="{Binding CurrentContent}"
+                            Background="{DynamicResource AppCanvasBrush}" />
 
             <!-- Инфо-плашка в полноэкранном режиме (замена верхней панели Toolbar) -->
             <Border Grid.Row="0" Grid.Column="1" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,14,0,0"

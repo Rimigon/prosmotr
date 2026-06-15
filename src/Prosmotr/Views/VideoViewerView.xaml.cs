@@ -135,6 +135,9 @@ public partial class VideoViewerView : UserControl
 
         WeakReferenceMessenger.Default.Unregister<ToggleChromeMessage>(this);
         DetachMainVm();
+        // При удалении View из дерева (видео → фото / пусто) останавливаем плеер
+        // и освобождаем Media сразу, чтобы нативное окно LibVLC не висело поверх WPF.
+        _vm?.StopAndRelease();
         Detach();
     }
 

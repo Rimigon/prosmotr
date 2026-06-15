@@ -28,7 +28,6 @@ public class ZoomBorder : Border
     private bool _dragging;
     private ImageViewMode _mode = ImageViewMode.Fit;
     private bool _free; // пользователь зумил/двигал вручную — не пересчитывать режим при ресайзе
-    private bool _pendingReveal; // true, пока содержимое скрыто в ожидании нового источника
     private Size _lastNaturalSize;
 
     /// <summary>Текущий масштаб в процентах (для индикатора).</summary>
@@ -89,7 +88,6 @@ public class ZoomBorder : Border
     /// </summary>
     public void HideContent()
     {
-        _pendingReveal = true;
         _free = false;
         if (_child != null)
             _child.Opacity = 0;
@@ -108,7 +106,6 @@ public class ZoomBorder : Border
         _mode = mode;
         _free = false;
         _lastNaturalSize = Size.Empty;
-        _pendingReveal = true;
         if (_child != null)
             _child.Opacity = 0;
         ApplyMode();
@@ -213,15 +210,12 @@ public class ZoomBorder : Border
         _lastNaturalSize = new Size(nw, nh);
         RaiseZoom();
 
-        // Раскрываем содержимое только после того, как впервые получили корректные
-        // размеры нового источника. До этого Child остаётся скрытым, чтобы не
-        // мелькал со старым масштабом/положением при переключении фото.
-        if (_pendingReveal)
-        {
-            _pendingReveal = false;
-            if (_child.Opacity < 1.0)
-                _child.Opacity = 1.0;
-        }
+        // Раскрываем содержимое, как только получили корректные размеры источника.
+        // Раньше раскрытие зависело от флага _pendingReveal, но при синхронном
+        // кэш-хите флаг мог сброситься раньше смены Source — тогда изображение
+        // оставалось невидимым. Теперь любой успешный ApplyMode гарантирует Opacity=1.
+        if (_child.Opacity < 1.0)
+            _child.Opacity = 1.0;
     }
 
     /// <summary>

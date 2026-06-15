@@ -11,7 +11,9 @@
              d:DataContext="{d:DesignInstance vm:VideoViewerViewModel}">
 
     <Grid x:Name="VideoHost" Background="{DynamicResource AppCanvasBrush}" ClipToBounds="True" UseLayoutRounding="True" SnapsToDevicePixels="True">
-        <vlc:VideoView x:Name="Video">
+        <!-- VideoView (WindowsFormsHost + нативное HWND VLC): явный чёрный фон,
+             чтобы между сменой Media или при инициализации не мелькал белый HWND. -->
+        <vlc:VideoView x:Name="Video" Background="Black">
             <!-- ВАЖНО (airspace): контролы лежат ВНУТРИ VideoView как его Content,
                  а фон оверлея НЕ полностью прозрачный (#01000000) — иначе не ловятся клики. -->
             <Grid x:Name="Overlay" Background="#02000000">

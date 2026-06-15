@@ -11,6 +11,7 @@ public sealed class VideoPlaybackService : IDisposable
 {
     private readonly LibVlcProvider _provider;
     private Media? _media;
+    private bool _startPausedMode;
 
     public MediaPlayer Player { get; }
 
@@ -22,6 +23,7 @@ public sealed class VideoPlaybackService : IDisposable
             EnableKeyInput = false,   // ввод обрабатываем сами через WPF-оверлей
             EnableMouseInput = false
         };
+        Player.Playing += OnPlaying;
     }
 
     /// <summary>Задать видео (resume через :start-time). Воспроизведение запускается отдельно через Play().</summary>
@@ -34,10 +36,27 @@ public sealed class VideoPlaybackService : IDisposable
         var media = new Media(_provider.LibVlc, path, FromType.FromPath);
 
         _media = media;
+
+        // start-paused декодирует первый кадр до показа, убирая белое мерцание
+        // при переключении видео (особенно через SwitchTo).
+        _startPausedMode = true;
+        _media.AddOption(":start-paused");
+
         if (startMs > 1000)
             _media.AddOption($":start-time={startMs / 1000.0:0.###}");
         Player.Media = _media;
         old?.Dispose();
+    }
+
+    private void OnPlaying(object? sender, EventArgs e)
+    {
+        // start-paused остановится на первом кадре; как только Playing пришло —
+        // первый кадр отрисован и можно безопасно продолжать воспроизведение.
+        if (_startPausedMode)
+        {
+            _startPausedMode = false;
+            Resume();
+        }
     }
 
     public void Play() => Player.Play();
@@ -45,6 +64,18 @@ public sealed class VideoPlaybackService : IDisposable
     public void Pause() => Player.SetPause(true);
     public void Resume() => Player.SetPause(false);
     public void Stop() => Player.Stop();
+
+    /// <summary>
+    /// Остановить воспроизведение и явно освободить Media, чтобы LibVLC закрыл
+    /// файловый handle. Используется перед удалением текущего видео.
+    /// </summary>
+    public void StopAndRelease()
+    {
+        try { Player.Stop(); } catch { }
+        try { Player.Media = null; } catch { }
+        _media?.Dispose();
+        _media = null;
+    }
 
     public long Time { get => Player.Time; set => Player.Time = value; }
     public long Length => Player.Length;
@@ -102,6 +133,7 @@ public sealed class VideoPlaybackService : IDisposable
 
     public void Dispose()
     {
+        Player.Playing -= OnPlaying;
         try { Player.Stop(); } catch { }
         try { Player.Media = null; } catch { }
         _media?.Dispose();
