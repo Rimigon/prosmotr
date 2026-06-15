@@ -81,7 +81,16 @@ public partial class ImageViewerView : UserControl
             vm.ZoomInRequested += OnZoomIn;
             vm.ZoomOutRequested += OnZoomOut;
             vm.ViewModeRequested += OnViewMode;
-            Zoom.SetMode(ImageViewMode.Fit); // сброс зума/панорамы под новое изображение
+
+            // Немедленно скрываем содержимое, чтобы старое фото не мелькало
+            // со старым масштабом до смены источника. Пересчёт зума откладываем
+            // на Render-приоритет, когда binding уже применит новый Image.Source.
+            Zoom.HideContent();
+            Dispatcher.BeginInvoke(() =>
+            {
+                Zoom.ResetContent(ImageViewMode.Fit);
+                Zoom.SetMode(ImageViewMode.Fit);
+            }, DispatcherPriority.Render);
         }
     }
 

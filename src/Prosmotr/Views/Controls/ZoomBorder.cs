@@ -28,6 +28,7 @@ public class ZoomBorder : Border
     private bool _dragging;
     private ImageViewMode _mode = ImageViewMode.Fit;
     private bool _free; // пользователь зумил/двигал вручную — не пересчитывать режим при ресайзе
+    private bool _pendingReveal; // true, пока содержимое скрыто в ожидании нового источника
     private Size _lastNaturalSize;
 
     /// <summary>Текущий масштаб в процентах (для индикатора).</summary>
@@ -80,6 +81,37 @@ public class ZoomBorder : Border
             _lastNaturalSize = Size.Empty;
             ApplyMode();
         }
+    }
+
+    /// <summary>
+    /// Немедленно скрыть содержимое и сбросить трансформ в безопасное начальное состояние.
+    /// Используется при смене фото, чтобы старая картинка не мелькала с устаревшим зумом.
+    /// </summary>
+    public void HideContent()
+    {
+        _pendingReveal = true;
+        _free = false;
+        if (_child != null)
+            _child.Opacity = 0;
+        // Сбрасываем трансформ, чтобы случайно не отрисовался кадр с неверным масштабом.
+        _scale.ScaleX = _scale.ScaleY = 1;
+        _translate.X = _translate.Y = 0;
+    }
+
+    /// <summary>
+    /// Сброс состояния при смене содержимого (например, новое фото в том же View).
+    /// Содержимое остаётся скрытым до тех пор, пока <see cref="ApplyMode"/> не получит
+    /// реальные размеры нового источника.
+    /// </summary>
+    public void ResetContent(ImageViewMode mode = ImageViewMode.Fit)
+    {
+        _mode = mode;
+        _free = false;
+        _lastNaturalSize = Size.Empty;
+        _pendingReveal = true;
+        if (_child != null)
+            _child.Opacity = 0;
+        ApplyMode();
     }
 
     private void OnChildSizeChanged(object sender, SizeChangedEventArgs e)
@@ -180,6 +212,16 @@ public class ZoomBorder : Border
         CenterContent(nw, nh, scale);
         _lastNaturalSize = new Size(nw, nh);
         RaiseZoom();
+
+        // Раскрываем содержимое только после того, как впервые получили корректные
+        // размеры нового источника. До этого Child остаётся скрытым, чтобы не
+        // мелькал со старым масштабом/положением при переключении фото.
+        if (_pendingReveal)
+        {
+            _pendingReveal = false;
+            if (_child.Opacity < 1.0)
+                _child.Opacity = 1.0;
+        }
     }
 
     /// <summary>

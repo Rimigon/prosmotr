@@ -175,8 +175,11 @@ tests/Prosmotr.Tests/        — xUnit-тесты чистой логики (net
   вписывание делает трансформ. **Не меняй `Canvas` обратно на `Grid`** — вернётся обрезка фото.
 - `GetNaturalContentSize` в `ZoomBorder` рекурсивно ищет первый видимый `Image` с `Source` и
   учитывает `LayoutTransform` (поворот). Режимы: `Fit` (вписать), `ActualSize` (100%), `Fill` (заполнить).
-- `ImageViewerView.xaml.cs` пересчитывает зум (`Zoom.SetMode(Fit)`) при смене `Image`/DataContext
-  через `Dispatcher.BeginInvoke(..., DispatcherPriority.Render)` — чтобы binding успел применить Source.
+- `ImageViewerView.xaml.cs` при смене фото сначала **синхронно** скрывает содержимое
+  (`ZoomBorder.HideContent()`), а затем на `DispatcherPriority.Render` сбрасывает и пересчитывает
+  зум (`ResetContent(Fit)` + `SetMode(Fit)`). Содержимое остаётся невидимым (`Opacity = 0`),
+  пока `ApplyMode()` не получит реальные размеры нового `Image.Source` — это устраняет
+  мелькание кадра со старым масштабом/положением.
 - **`LayoutUpdated` throttled.** `ZoomBorder` держит `DispatcherTimer` с интервалом **40 мс**:
   каждый `LayoutUpdated` лишь **рестартует** таймер, а `ApplyMode()` вызывается только после
   затихания событий. Это предотвращает лишние пересчёты при быстром resize окна.
