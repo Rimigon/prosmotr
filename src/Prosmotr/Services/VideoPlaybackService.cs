@@ -21,7 +21,8 @@ public sealed class VideoPlaybackService : IDisposable
         Player = new MediaPlayer(_provider.LibVlc)
         {
             EnableKeyInput = false,   // ввод обрабатываем сами через WPF-оверлей
-            EnableMouseInput = false
+            EnableMouseInput = false,
+            EnableHardwareDecoding = false // отключаем аппаратное декодирование: на ряде GPU/драйверов даёт зелёный экран
         };
         Player.Playing += OnPlaying;
     }

@@ -20,6 +20,20 @@ public sealed class LibVlcProvider : IDisposable
     private static bool _coreInitialized;
     private static bool _disposed;
 
+    /// <summary>
+    /// Опции LibVLC. Добавляем только безопасные опции: кэширование локальных файлов.
+    /// Опции видеовывода/hwdec отключаем только на уровне MediaPlayer (EnableHardwareDecoding),
+    /// чтобы не ломать нативную инициализацию LibVLC.
+    /// </summary>
+    private static string[] VlcOptions() => new[]
+    {
+        "--no-video-title-show",
+        "--quiet",
+        "--no-plugins-scan",
+        "--file-caching=1000",
+        "--network-caching=1000"
+    };
+
     public LibVLC LibVlc
     {
         get
@@ -31,10 +45,7 @@ public sealed class LibVlcProvider : IDisposable
                 {
                     EnsureCoreInitialized();
                     // Кэш должен уже существовать (Warmup создаёт его раньше).
-                    _libVlc = new LibVLC(
-                        "--no-video-title-show",
-                        "--quiet",
-                        "--no-plugins-scan"); // не сканируем директории — только plugins.dat
+                    _libVlc = new LibVLC(VlcOptions()); // не сканируем директории — только plugins.dat
                 }
                 return _libVlc;
             }
@@ -90,7 +101,7 @@ public sealed class LibVlcProvider : IDisposable
             {
                 var sw = Stopwatch.StartNew();
                 EnsureCoreInitialized();
-                _libVlc = new LibVLC("--no-video-title-show", "--quiet", "--no-plugins-scan");
+                _libVlc = new LibVLC(VlcOptions());
                 AppLog.Write($"[Perf] LibVLC warmup: {sw.ElapsedMilliseconds} ms");
             }
             catch (Exception ex)

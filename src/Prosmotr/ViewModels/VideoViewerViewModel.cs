@@ -225,7 +225,9 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         var clamped = Math.Clamp(ms, 0, Math.Max(0, LengthMs));
         _playback.Time = (long)clamped;
         PositionMs = clamped;
-        SavePosition();
+        // Позицию не сохраняем здесь: каждый seek/shuttle-шаг иначе запускал бы
+        // debounce-запись на диск и микро-задержки. Сохранение происходит при паузе,
+        // остановке, завершении видео и при выходе из viewer (Dispose).
         if (IsEnded && clamped < LengthMs) IsEnded = false;
     }
 
