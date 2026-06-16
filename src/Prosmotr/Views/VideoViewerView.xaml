@@ -10,8 +10,13 @@
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance vm:VideoViewerViewModel}">
 
-    <Grid x:Name="VideoHost" Background="{DynamicResource AppCanvasBrush}" ClipToBounds="True" UseLayoutRounding="True" SnapsToDevicePixels="True">
-        <!-- VideoView (WindowsFormsHost + нативное HWND VLC): явный чёрный фон,
+    <!-- Фон VideoHost всегда чёрный: в светлой теме AppCanvasBrush = белый,
+         и любой зазор между нативным окном LibVLC и WPF-контейнером выглядел
+         бы как белая полоса/квадрат справа/снизу. ClipToBounds оставляем;
+         UseLayoutRounding/SnapsToDevicePixels убраны — они дают рассинхрон
+         DIP-пикселей WPF и физических пикселей HWND при airspace LibVLC. -->
+    <Grid x:Name="VideoHost" Background="Black" ClipToBounds="True">
+        <!-- VideoView (HwndHost + нативное HWND VLC): явный чёрный фон,
              чтобы между сменой Media или при инициализации не мелькал белый HWND. -->
         <vlc:VideoView x:Name="Video" Background="Black">
             <!-- ВАЖНО (airspace): контролы лежат ВНУТРИ VideoView как его Content,
