@@ -21,6 +21,8 @@ public sealed class AppSettings
     public int SeekStepSeconds { get; set; } = 5;
     /// <summary>Покадровая перемотка: ←/→ шагают по одному кадру вместо <see cref="SeekStepSeconds"/>.</summary>
     public bool FrameByFrameSeek { get; set; } = false;
+    /// <summary>Стрелки ←/→ всегда перематывают открытое видео, а не переключают файлы (в любом режиме окна).</summary>
+    public bool ArrowKeysSeekVideo { get; set; } = false;
 
     // --- Удаление ---
     public bool ConfirmDelete { get; set; } = true;

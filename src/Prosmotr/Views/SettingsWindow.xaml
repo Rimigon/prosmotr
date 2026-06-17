@@ -122,6 +122,21 @@
                     </Grid>
                 </Border>
 
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Перематывать видео стрелками" />
+                            <TextBlock Text="←/→ всегда seek'ают открытое видео; файлы листаются только для фото"
+                                       Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding ArrowKeysSeekVideo, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
                 <!-- УДАЛЕНИЕ -->
                 <TextBlock Text="Удаление" Style="{StaticResource Section}" />
 

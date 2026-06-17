@@ -280,14 +280,20 @@ public partial class MainWindow : FluentWindow
         switch (key)
         {
             case Key.Left:
-                if (_vm.IsFullScreen && _vm.CurrentContent is VideoViewerViewModel videoBack)
+                if (_vm.CurrentContent is VideoViewerViewModel videoBack
+                    && (_settings.Settings.ArrowKeysSeekVideo || _vm.IsFullScreen))
+                {
                     videoBack.StepBackwardCommand.Execute(null);
+                }
                 else if (_vm.PreviousCommand.CanExecute(null))
                     _vm.PreviousCommand.Execute(null);
                 return true;
             case Key.Right:
-                if (_vm.IsFullScreen && _vm.CurrentContent is VideoViewerViewModel videoFwd)
+                if (_vm.CurrentContent is VideoViewerViewModel videoFwd
+                    && (_settings.Settings.ArrowKeysSeekVideo || _vm.IsFullScreen))
+                {
                     videoFwd.StepForwardCommand.Execute(null);
+                }
                 else if (_vm.NextCommand.CanExecute(null))
                     _vm.NextCommand.Execute(null);
                 return true;

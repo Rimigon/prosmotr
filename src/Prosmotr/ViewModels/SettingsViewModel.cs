@@ -59,6 +59,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private int _slideshowIntervalSeconds;
     [ObservableProperty] private int _seekStepSeconds;
     [ObservableProperty] private bool _frameByFrameSeek;
+    [ObservableProperty] private bool _arrowKeysSeekVideo;
     [ObservableProperty] private bool _matchExplorerSort;
     [ObservableProperty] private bool _integrateShell;
     [ObservableProperty] private bool _isAssociationsRegistered;
@@ -97,6 +98,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         SlideshowIntervalSeconds = s.SlideshowIntervalSeconds;
         SeekStepSeconds = s.SeekStepSeconds;
         FrameByFrameSeek = s.FrameByFrameSeek;
+        ArrowKeysSeekVideo = s.ArrowKeysSeekVideo;
         MatchExplorerSort = s.MatchExplorerSort;
         IntegrateShell = s.IntegrateShell;
         ExitKey = IsAllowedKey(s.ExitKey) ? s.ExitKey : "End";
@@ -127,6 +129,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         s.SlideshowIntervalSeconds = Math.Clamp(SlideshowIntervalSeconds, 1, 60);
         s.SeekStepSeconds = Math.Clamp(SeekStepSeconds, 1, 30); // согласовано с [Range] и слайдером
         s.FrameByFrameSeek = FrameByFrameSeek;
+        s.ArrowKeysSeekVideo = ArrowKeysSeekVideo;
         s.MatchExplorerSort = MatchExplorerSort;
         s.IntegrateShell = IntegrateShell;
         s.ExitKey = ExitKey;
@@ -156,6 +159,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     partial void OnSlideshowIntervalSecondsChanged(int value) => Commit(immediate: true);
     partial void OnSeekStepSecondsChanged(int value) => Commit();
     partial void OnFrameByFrameSeekChanged(bool value) => Commit();
+    partial void OnArrowKeysSeekVideoChanged(bool value) => Commit();
     partial void OnMatchExplorerSortChanged(bool value) => Commit();
     partial void OnExitKeyChanged(string value) => Commit();
     partial void OnToggleChromeKeyChanged(string value) => Commit();
