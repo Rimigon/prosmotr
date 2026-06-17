@@ -38,8 +38,12 @@ public sealed partial class MainViewModel
 
             // Видео держит файловый handle в LibVLC. Останавливаем плеер и освобождаем Media,
             // чтобы файл можно было переместить в Корзину / удалить без sharing violation.
+            // Поднимаем чёрный cover ДО остановки: в полноэкранном режиме StopAndRelease очищает
+            // нативное HWND LibVLC, и его светлый фон на секунду заливает весь экран. Cover в
+            // оверлее ForegroundWindow скроет этот промежуток до SwitchTo/переключения.
             if (cur.IsVideo && CurrentContent is VideoViewerViewModel videoVm)
             {
+                videoVm.IsBuffering = true;
                 videoVm.StopAndRelease();
                 await Task.Delay(250);
             }

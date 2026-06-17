@@ -84,12 +84,19 @@ public partial class VideoViewerView : UserControl
         {
             _vm = vm;
             vm.PropertyChanged += OnVmPropertyChanged;
-            Video.MediaPlayer = vm.Player;
+            UpdateCover(); // сначала поднимаем чёрный cover
             if (IsLoaded)
             {
-                ShowControls();
-                vm.Start();
-                FocusHostWindow();
+                // Даём WPF один полный render-цикл, чтобы cover отрисовался поверх
+                // нативного HWND LibVLC ДО смены Media/Play — иначе белый фон HWND
+                // успевает мелькнуть раньше cover.
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    Video.MediaPlayer = vm.Player;
+                    ShowControls();
+                    vm.Start();
+                    FocusHostWindow();
+                }), DispatcherPriority.Render);
             }
             // Перепривязываем _mainVm на случай, если окно/VM сменились (идемпотентно).
             AttachMainVm(Window.GetWindow(this)?.DataContext as MainViewModel);
@@ -100,15 +107,19 @@ public partial class VideoViewerView : UserControl
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (_vm == null) return;
-        Video.MediaPlayer = _vm.Player;
-        ShowControls();
-        _vm.Start();
+        UpdateCover(); // cover вверх до старта, чтобы не мелькал белый фон нативного HWND
+        // Отрисовываем cover перед сменой Media/Play: сначала Render, потом уже плеер.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            Video.MediaPlayer = _vm.Player;
+            ShowControls();
+            _vm.Start();
+        }), DispatcherPriority.Render);
         Dispatcher.BeginInvoke(new Action(FocusHostWindow), DispatcherPriority.Loaded);
         // Идемпотентная привязка: при reuse-сценарии OnDataContextChanged мог уже подписать
         // тот же _mainVm — без этого было два += против одного -= (утечка View через singleton).
         AttachMainVm(Window.GetWindow(this)?.DataContext as MainViewModel);
         AppLog.Write($"VideoViewerView.OnLoaded: _mainVm={_mainVm != null}");
-        UpdateInfo();
         UpdateCloneButton();
     }
 
@@ -188,6 +199,26 @@ public partial class VideoViewerView : UserControl
         {
             UpdateSideNav();
         }
+        else if (e.PropertyName == nameof(VideoViewerViewModel.IsBuffering))
+        {
+            UpdateCover();
+        }
+    }
+
+    /// <summary>
+    /// Синхронизировать чёрный cover со статусом «загрузка первого кадра».
+    /// Cover перекрывает нативный HWND LibVLC (через оверлей ForegroundWindow), скрывая
+    /// его светлый фон (белый квадрат) до готовности первого кадра. Пока cover активен,
+    /// также скрываем панель управления/стрелки/инфо, чтобы белый фон не просвечивал через
+    /// их полупрозрачные области.
+    /// </summary>
+    private void UpdateCover()
+    {
+        if (SwitchCover == null) return;
+        var visible = _vm?.IsBuffering == true;
+        AppLog.Write($"[Flicker] UpdateCover IsBuffering={_vm?.IsBuffering} Setting={visible}");
+        SwitchCover.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        UpdateChromeVisibility();
     }
 
     private void OnSliderValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -254,7 +285,9 @@ public partial class VideoViewerView : UserControl
     private void OnPauseShowTimerTick(object? sender, EventArgs e)
     {
         _pauseShowTimer.Stop();
-        if (_vm is { IsPlaying: false, IsEnded: false }) ShowControls();
+        // Во время буферизации не возвращаем панель — иначе cover перестанет перекрывать
+        // нижнюю часть и белый фон нативного HWND просветит через полупрозрачную панель.
+        if (_vm is { IsPlaying: false, IsEnded: false, IsBuffering: false }) ShowControls();
     }
 
     private void OnSpeedButtonClick(object sender, RoutedEventArgs e)
@@ -428,15 +461,8 @@ public partial class VideoViewerView : UserControl
 
     private void ShowControls()
     {
-        ControlBar.Visibility = Visibility.Visible;
-        // Устанавливаем курсор на Overlay (а не на UserControl), чтобы он точно применялся
-        // над областью видео внутри airspace LibVLCSharp.WPF.
-        Overlay.Cursor = Cursors.Arrow;
-        // Также возвращаем курсор окна, если видео его скрыло — чтобы панели/стрелки снаружи тоже были с курсором.
-        if (Window.GetWindow(this) is { } w) w.Cursor = Cursors.Arrow;
         _controlsShown = true;
-        UpdateSideNav();
-        UpdateInfo();
+        UpdateChromeVisibility();
         _hideTimer.Stop();
         // Если автоскрытие отключено настройкой — таймер не запускаем, панель остаётся видимой.
         if (_vm == null || _vm.AutoHideControls)
@@ -446,24 +472,43 @@ public partial class VideoViewerView : UserControl
     private void HideControlsIfPlaying()
     {
         _hideTimer.Stop();
-        if (_vm is { IsPlaying: true, IsEnded: false })
+        if (_vm is { IsPlaying: true, IsEnded: false, IsBuffering: false })
         {
-            ControlBar.Visibility = Visibility.Collapsed;
-            // Скрываем курсор над видео: явно на Overlay (чтобы airspace не мешал)
-            // и на окно (чтобы не оставался Arrow от MainWindow/иных элементов).
-            Overlay.Cursor = Cursors.None;
-            if (Window.GetWindow(this) is { } w) w.Cursor = Cursors.None;
             _controlsShown = false;
-            UpdateSideNav();
-            UpdateInfo();
+            UpdateChromeVisibility();
         }
+    }
+
+    /// <summary>
+    /// Синхронизировать видимость панели/стрелок/инфо-плашки с учётом буферизации.
+    /// Пока идёт загрузка первого кадра (IsBuffering), панель управления и стрелки
+    /// прячутся, чтобы чёрный cover перекрывал всё ForegroundWindow и белый фон
+    /// нативного HWND не просвечивал через полупрозрачную панель.
+    /// </summary>
+    private void UpdateChromeVisibility()
+    {
+        bool show = _controlsShown && _vm?.IsBuffering != true;
+        ControlBar.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        // Устанавливаем курсор на Overlay (а не на UserControl), чтобы он точно применялся
+        // над областью видео внутри airspace LibVLCSharp.WPF.
+        // Во время буферизации курсор оставляем видимым — переключение короткое, и скрывать
+        // его не нужно; при воспроизведении без действий — None (автоскрытие).
+        bool hideCursor = !show && _vm?.IsBuffering != true;
+        Overlay.Cursor = hideCursor ? Cursors.None : Cursors.Arrow;
+        if (Window.GetWindow(this) is { } w)
+            w.Cursor = hideCursor ? Cursors.None : Cursors.Arrow;
+        UpdateSideNav();
+        UpdateInfo();
     }
 
     // Боковые стрелки перехода между файлами показываются только вместе с панелью управления
     // (и только когда файлов больше одного) — прячутся по таймеру одновременно с ней.
+    // Во время буферизации тоже скрываем, чтобы не оставались «дырки» в чёрном cover.
     private void UpdateSideNav()
     {
-        var show = _controlsShown && _vm?.ShowFileNavigation == true;
+        var show = _controlsShown
+                   && _vm?.ShowFileNavigation == true
+                   && _vm?.IsBuffering != true;
         var visibility = show ? Visibility.Visible : Visibility.Collapsed;
         PrevFileButton.Visibility = visibility;
         NextFileButton.Visibility = visibility;
@@ -473,12 +518,8 @@ public partial class VideoViewerView : UserControl
     {
         if (_controlsShown)
         {
-            ControlBar.Visibility = Visibility.Collapsed;
-            Overlay.Cursor = Cursors.None;
-            if (Window.GetWindow(this) is { } w) w.Cursor = Cursors.None;
             _controlsShown = false;
-            UpdateSideNav();
-            UpdateInfo();
+            UpdateChromeVisibility();
             _hideTimer.Stop();
         }
         else
@@ -515,7 +556,10 @@ public partial class VideoViewerView : UserControl
     private void UpdateInfo()
     {
         if (FullscreenInfoBorder == null || InfoText == null) return;
-        bool show = _mainVm?.IsFullScreen == true && _controlsShown && !string.IsNullOrEmpty(_mainVm.StatusText);
+        bool show = _mainVm?.IsFullScreen == true
+                    && _controlsShown
+                    && _vm?.IsBuffering != true
+                    && !string.IsNullOrEmpty(_mainVm.StatusText);
         InfoText.Text = _mainVm?.StatusText ?? string.Empty;
         FullscreenInfoBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }

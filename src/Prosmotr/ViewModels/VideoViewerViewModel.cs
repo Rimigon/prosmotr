@@ -1,10 +1,13 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Windows;
+using MediaRendering = System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LibVLCSharp.Shared;
+using Prosmotr.Infrastructure;
 using Prosmotr.Models;
 using Prosmotr.Services;
 using Prosmotr.Services.Abstractions;
@@ -38,6 +41,9 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     // На время переключения видео→видео подавляем SavePosition: асинхронные события
     // старого плеера (Stopped/TimeChanged) иначе запишут позицию под путём нового файла.
     private bool _switching;
+    // Поколение отложенной загрузки (LoadAndPlayDeferred): инкремент на каждый Start/SwitchTo/Replay.
+    // Победила последняя — устаревшие отложенные Load/Play (от быстрой навигации) пропускаются.
+    private int _loadGen;
 
     public MediaItem Item { get; private set; }
     public MediaPlayer Player => _playback.Player;
@@ -67,6 +73,17 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     /// <summary>Показывать боковые кнопки перехода к пред./след. файлу (есть больше одного файла).</summary>
     [ObservableProperty] private bool _showFileNavigation;
 
+    /// <summary>Идёт загрузка первого кадра (старт или переключение видео). View показывает
+    /// чёрный cover поверх нативного HWND LibVLC, чтобы скрыть его светлый фон (белый квадрат),
+    /// мелькающий до отрисовки первого кадра. false — первый кадр реально обновился (TimeChanged
+    /// дал ненулевое время) либо ошибка.</summary>
+    [ObservableProperty] private bool _isBuffering;
+
+    // OnPlaying приходит слишком рано — раньше первого видимого кадра. TimeChanged тоже
+    // не годится: при resume-старте оно приходит сразу с большим временем, но кадр ещё не
+    // отрисован. Поэтому cover убираем по таймеру после OnPlaying — даём LibVLC фиксированное
+    // окно (400 мс) на отрисовку первого кадра.
+    private DispatcherTimer? _firstFrameTimer;
     private bool _suppressRateSelect;
 
     public VideoViewerViewModel(
@@ -98,6 +115,10 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         p.EncounteredError += OnError;
         p.TimeChanged += OnTimeChanged;
         p.LengthChanged += OnLengthChanged;
+
+        // Свежий VM вот-вот начнёт загрузку: сразу отмечаем «буферизацию», чтобы View показал
+        // чёрный cover ещё до первого OnLoaded/Start (и скрыл белый фон нативного HWND).
+        IsBuffering = true;
     }
 
     /// <summary>Запускается из View после загрузки VideoView (когда готов нативный HWND).</summary>
@@ -125,11 +146,22 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         PositionMs = 0;
         LengthMs = 0;
 
-        BeginPlayback();          // загрузить новую дорожку в тот же плеер
+        // Поднимаем чёрный cover ДО остановки старой дорожки: StopAndRelease очищает
+        // нативное HWND LibVLC, и без cover его светлый фон мелькает между видео.
+        // View (тот же экземпляр при video→video) увидит IsBuffering=true и закроет
+        // белый фон раньше, чем плеер начнёт освобождать Media.
+        IsBuffering = true;
+        _playback.StopAndRelease();
+        BeginPlayback();
     }
 
     private void BeginPlayback()
     {
+        // Cover встаёт ДО смены Media/Play: нативное окно LibVLC при загрузке новой дорожки
+        // успевает мигнуть светлым фоном. Чёрный cover в оверлее перекрывает его, пока не
+        // отрисован первый реальный кадр (TimeChanged > 0) либо ошибка.
+        IsBuffering = true;
+
         var stored = _positions.Get(Item.FullPath);
 
         long startMs = 0;
@@ -144,8 +176,41 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         if (_settings.Settings.RememberRatePerFile && stored?.Rate is > 0)
             _pendingRate = stored.Rate!.Value;
 
-        _playback.Load(Item.FullPath, startMs);
-        _playback.Play();
+        LoadAndPlayDeferred(startMs);
+    }
+
+    /// <summary>Загрузить дорожку и запустить воспроизведение ТОЛЬКО ПОСЛЕ того, как WPF
+    /// отрисовал чёрный cover. Используем CompositionTarget.Rendering: подписываемся на один
+    /// кадр рендера, затем небольшую задержку (50 мс), и только потом Load/Play. Без этого
+    /// нативное окно LibVLC (класс "static") успевало мигнуть белым фоном раньше cover.
+    /// Поколение _loadGen защищает от устаревших отложенных загрузок при быстрой навигации.
+    /// </summary>
+    private void LoadAndPlayDeferred(long startMs)
+    {
+        var gen = ++_loadGen;
+        var path = Item.FullPath;
+        var app = Application.Current;
+        if (app == null) { _playback.Load(path, startMs); _playback.Play(); return; }
+
+        AppLog.Write($"[Flicker] LoadAndPlayDeferred queued gen={gen} path={Path.GetFileName(path)}");
+        EventHandler? renderingHandler = null;
+        var renderSw = Stopwatch.StartNew();
+        renderingHandler = (_, _) =>
+        {
+            MediaRendering.CompositionTarget.Rendering -= renderingHandler;
+            AppLog.Write($"[Flicker] Render frame ready gen={gen} after {renderSw.ElapsedMilliseconds} ms, scheduling 50ms delay");
+            var delay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+            delay.Tick += (_, _) =>
+            {
+                delay.Stop();
+                if (_disposed || gen != _loadGen) { AppLog.Write($"[Flicker] Superseded gen={gen}"); return; }
+                AppLog.Write($"[Flicker] Loading gen={gen} total delay {renderSw.ElapsedMilliseconds} ms");
+                _playback.Load(path, startMs);
+                _playback.Play();
+            };
+            delay.Start();
+        };
+        app.Dispatcher.BeginInvoke(new Action(() => MediaRendering.CompositionTarget.Rendering += renderingHandler), DispatcherPriority.Render);
     }
 
     // --- Команды управления ---
@@ -206,8 +271,8 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     private void Replay()
     {
         IsEnded = false;
-        _playback.Load(Item.FullPath, 0);
-        _playback.Play();
+        IsBuffering = true; // cover до первого кадра (как при старт/переключении)
+        LoadAndPlayDeferred(0);
     }
 
     /// <summary>Изменить скорость для текущего видео (вызывается клавишами [ ] / +/-).</summary>
@@ -348,9 +413,24 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         // уже поставленное. Без guard'а ниже мы бы писали Rate/Volume/Mute в уже уничтоженный
         // нативный MediaPlayer → AccessViolation. (как в OnTimeChanged/OnLengthChanged)
         if (_disposed) return;
+        AppLog.Write($"[Flicker] OnPlaying fired gen={_loadGen}, IsBuffering={IsBuffering}");
         IsPlaying = true;
         IsEnded = false;
         _switching = false; // новое видео реально стартовало — снимаем подавление SavePosition
+        // НЕ сбрасываем IsBuffering здесь: OnPlaying приходит раньше реального кадра.
+        // Cover убираем по таймеру — даём LibVLC 400 мс на отрисовку первого кадра.
+        _firstFrameTimer?.Stop();
+        _firstFrameTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+        _firstFrameTimer.Tick += (_, _) =>
+        {
+            _firstFrameTimer?.Stop();
+            if (!_disposed && IsBuffering)
+            {
+                AppLog.Write($"[Flicker] First-frame timer elapsed gen={_loadGen} — clearing cover");
+                IsBuffering = false;
+            }
+        };
+        _firstFrameTimer.Start();
         // Применяем отложенные параметры, когда воспроизведение реально стартовало.
         _playback.Rate = _pendingRate;
         Rate = _pendingRate;
@@ -361,7 +441,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
     private void OnPaused(object? sender, EventArgs e) => OnUi(() => { if (_disposed) return; IsPlaying = false; SavePosition(); });
     private void OnStopped(object? sender, EventArgs e) => OnUi(() => { if (_disposed) return; IsPlaying = false; SavePosition(); });
-    private void OnError(object? sender, EventArgs e) => OnUi(() => { if (_disposed) return; HasError = true; IsPlaying = false; });
+    private void OnError(object? sender, EventArgs e) => OnUi(() => { if (_disposed) return; AppLog.Write($"[Flicker] OnError gen={_loadGen}"); HasError = true; IsPlaying = false; IsBuffering = false; });
 
     private void OnEndReached(object? sender, EventArgs e) => OnUi(() =>
     {
@@ -373,8 +453,6 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         _positions.Remove(Item.FullPath); // досмотрено — позицию не храним
     });
 
-    private void OnTimeChanged(object? sender, MediaPlayerTimeChangedEventArgs e) =>
-        OnUi(() => { if (!_disposed) PositionMs = e.Time; });
 
     private void OnLengthChanged(object? sender, MediaPlayerLengthChangedEventArgs e) =>
         OnUi(() => { if (!_disposed) LengthMs = e.Length; });
@@ -391,6 +469,9 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     private static string FormatRate(float r) =>
         r.ToString("0.##", CultureInfo.CurrentCulture) + "×";
 
+    private void OnTimeChanged(object? sender, MediaPlayerTimeChangedEventArgs e) =>
+        OnUi(() => { if (!_disposed) PositionMs = e.Time; });
+
     private static void OnUi(Action action)
     {
         var app = Application.Current;
@@ -403,6 +484,8 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+
+        IsBuffering = false; // на всякий случай убираем cover (View отвязывается параллельно)
 
         // SavePosition ДО _disposed=true: сама SavePosition имеет ранний return при _disposed,
         // поэтому при обратном порядке это был no-op и resume-позиция терялась при video→фото/выходе.

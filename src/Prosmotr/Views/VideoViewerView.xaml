@@ -215,6 +215,19 @@
                     </Grid>
                 </Border>
 
+                <!-- Чёрный cover на время загрузки первого кадра (старт/переключение видео):
+                     нативное Win32-окно LibVLC (HwndHost, класс "static") до отрисовки первого
+                     кадра закрашивается своим светлым фоном — отсюда белый квадрат при смене
+                     видео. WPF-фон VideoView/VideoHost этого не лечит: он за непрозрачным HWND.
+                     Cover лежит в оверлее (ForegroundWindow всегда поверх нативного окна) и
+                     гарантированно перекрывает белый. RowSpan="2" + скрытие панели во время
+                     буферизации, чтобы белый фон не просвечивал ни в какой области, включая
+                     полупрозрачную панель управления. Убирается, когда первый кадр готов
+                     (IsBuffering → false). -->
+                <Border x:Name="SwitchCover" Grid.Row="0" Grid.RowSpan="2" Background="Black"
+                        IsHitTestVisible="False"
+                        Visibility="{Binding IsBuffering, Converter={StaticResource BoolToVis}}" />
+
                 <!-- Уведомления поверх видео (внутри airspace VLC — иначе тосты не видны на видео) -->
                 <ctl:ToastView Grid.Row="0" />
             </Grid>

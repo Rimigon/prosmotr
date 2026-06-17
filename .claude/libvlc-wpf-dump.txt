@@ -1,0 +1,726 @@
+C:\Users\nikit\Desktop\Просмотр\.claude\cecildump\Program.cs(74,16): warning CS8603: Возможно, возврат ссылки, допускающей значение NULL. [C:\Users\nikit\Desktop\Просмотр\.claude\cecildump\CecilDump.csproj]
+
+=== Type: LibVLCSharp.WPF.ForegroundWindow (base: System.Windows.Window) ===
+  field: _wndhost : System.Windows.Window
+  field: _bckgnd : System.Windows.FrameworkElement
+  field: _zeroPoint : System.Windows.Point
+  field: _grid : System.Windows.Controls.Grid
+  field: _overlayContent : System.Windows.UIElement
+
+  method: get_OverlayContent [Assembly, HideBySig, SpecialName]
+    IL (3):
+      0000 ldarg.0 
+      0001 ldfld LibVLCSharp.WPF.ForegroundWindow::_overlayContent
+      0006 ret 
+
+  method: set_OverlayContent [Assembly, HideBySig, SpecialName]
+    params: value:System.Windows.UIElement
+    IL (18):
+      0000 ldarg.0 
+      0001 ldarg.1 
+      0002 stfld LibVLCSharp.WPF.ForegroundWindow::_overlayContent
+      0007 ldarg.0 
+      0008 ldfld LibVLCSharp.WPF.ForegroundWindow::_grid
+      0013 callvirt System.Windows.Controls.Panel::get_Children
+      0018 callvirt System.Windows.Controls.UIElementCollection::Clear
+      0023 ldarg.0 
+      0024 ldfld LibVLCSharp.WPF.ForegroundWindow::_overlayContent
+      0029 brfalse.s IL_0036: ret
+      0031 ldarg.0 
+      0032 ldfld LibVLCSharp.WPF.ForegroundWindow::_grid
+      0037 callvirt System.Windows.Controls.Panel::get_Children
+      0042 ldarg.0 
+      0043 ldfld LibVLCSharp.WPF.ForegroundWindow::_overlayContent
+      0048 callvirt System.Windows.Controls.UIElementCollection::Add
+      0053 pop 
+      0054 ret 
+
+  method: .ctor [Assembly, HideBySig, SpecialName, RTSpecialName]
+    params: background:System.Windows.FrameworkElement
+    IL (64):
+      0000 ldarg.0 
+      0001 ldc.r8 0
+      0010 ldc.r8 0
+      0019 newobj System.Windows.Point::.ctor
+      0024 stfld LibVLCSharp.WPF.ForegroundWindow::_zeroPoint
+      0029 ldarg.0 
+      0030 newobj System.Windows.Controls.Grid::.ctor
+      0035 stfld LibVLCSharp.WPF.ForegroundWindow::_grid
+      0040 ldarg.0 
+      0041 call System.Windows.Window::.ctor
+      0046 ldarg.0 
+      0047 ldstr "LibVLCSharp.WPF"
+      0052 call System.Windows.Window::set_Title
+      0057 ldarg.0 
+      0058 ldc.r8 300
+      0067 call System.Windows.FrameworkElement::set_Height
+      0072 ldarg.0 
+      0073 ldc.r8 300
+      0082 call System.Windows.FrameworkElement::set_Width
+      0087 ldarg.0 
+      0088 ldc.i4.0 
+      0089 call System.Windows.Window::set_WindowStyle
+      0094 ldarg.0 
+      0095 call System.Windows.Media.Brushes::get_Transparent
+      0100 call System.Windows.Controls.Control::set_Background
+      0105 ldarg.0 
+      0106 ldc.i4.0 
+      0107 call System.Windows.Window::set_ResizeMode
+      0112 ldarg.0 
+      0113 ldc.i4.1 
+      0114 call System.Windows.Window::set_AllowsTransparency
+      0119 ldarg.0 
+      0120 ldc.i4.0 
+      0121 call System.Windows.Window::set_ShowInTaskbar
+      0126 ldarg.0 
+      0127 ldarg.0 
+      0128 ldfld LibVLCSharp.WPF.ForegroundWindow::_grid
+      0133 call System.Windows.Controls.ContentControl::set_Content
+      0138 ldarg.0 
+      0139 ldarg.1 
+      0140 callvirt System.Windows.FrameworkElement::get_DataContext
+      0145 call System.Windows.FrameworkElement::set_DataContext
+      0150 ldarg.0 
+      0151 ldarg.1 
+      0152 stfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0157 ldarg.0 
+      0158 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0163 ldarg.0 
+      0164 ldftn LibVLCSharp.WPF.ForegroundWindow::Background_DataContextChanged
+      0170 newobj System.Windows.DependencyPropertyChangedEventHandler::.ctor
+      0175 callvirt System.Windows.FrameworkElement::add_DataContextChanged
+      0180 ldarg.0 
+      0181 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0186 ldarg.0 
+      0187 ldftn LibVLCSharp.WPF.ForegroundWindow::Background_Loaded
+      0193 newobj System.Windows.RoutedEventHandler::.ctor
+      0198 callvirt System.Windows.FrameworkElement::add_Loaded
+      0203 ldarg.0 
+      0204 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0209 ldarg.0 
+      0210 ldftn LibVLCSharp.WPF.ForegroundWindow::Background_Unloaded
+      0216 newobj System.Windows.RoutedEventHandler::.ctor
+      0221 callvirt System.Windows.FrameworkElement::add_Unloaded
+      0226 ret 
+
+  method: Background_DataContextChanged [Private, HideBySig]
+    params: sender:System.Object, e:System.Windows.DependencyPropertyChangedEventArgs
+    IL (5):
+      0000 ldarg.0 
+      0001 ldarga.s e
+      0003 call System.Windows.DependencyPropertyChangedEventArgs::get_NewValue
+      0008 call System.Windows.FrameworkElement::set_DataContext
+      0013 ret 
+
+  method: Background_Unloaded [Private, HideBySig]
+    params: sender:System.Object, e:System.Windows.RoutedEventArgs
+    IL (30):
+      0000 ldarg.0 
+      0001 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0006 ldarg.0 
+      0007 ldftn LibVLCSharp.WPF.ForegroundWindow::Bckgnd_SizeChanged
+      0013 newobj System.Windows.SizeChangedEventHandler::.ctor
+      0018 callvirt System.Windows.FrameworkElement::remove_SizeChanged
+      0023 ldarg.0 
+      0024 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0029 ldarg.0 
+      0030 ldftn LibVLCSharp.WPF.ForegroundWindow::Bckgnd_LayoutUpdated
+      0036 newobj System.EventHandler::.ctor
+      0041 callvirt System.Windows.UIElement::remove_LayoutUpdated
+      0046 ldarg.0 
+      0047 ldfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0052 brfalse.s IL_0064: ldarg.0
+      0054 ldarg.0 
+      0055 ldfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0060 ldarg.0 
+      0061 ldftn LibVLCSharp.WPF.ForegroundWindow::Wndhost_Closing
+      0067 newobj System.ComponentModel.CancelEventHandler::.ctor
+      0072 callvirt System.Windows.Window::remove_Closing
+      0077 ldarg.0 
+      0078 ldfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0083 ldarg.0 
+      0084 ldftn LibVLCSharp.WPF.ForegroundWindow::Wndhost_LocationChanged
+      0090 newobj System.EventHandler::.ctor
+      0095 callvirt System.Windows.Window::remove_LocationChanged
+      0100 ldarg.0 
+      0101 call System.Windows.Window::Hide
+      0106 ret 
+
+  method: Background_Loaded [Private, HideBySig]
+    params: sender:System.Object, e:System.Windows.RoutedEventArgs
+    IL (66):
+      0000 ldarg.0 
+      0001 ldfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0006 brfalse.s IL_0011: ldarg.0
+      0008 ldarg.0 
+      0009 call System.Windows.UIElement::get_IsVisible
+      0014 brfalse.s IL_0011: ldarg.0
+      0016 ret 
+      0017 ldarg.0 
+      0018 ldarg.0 
+      0019 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0024 call System.Windows.Window::GetWindow
+      0029 stfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0034 ldarg.0 
+      0035 ldfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0040 ldnull 
+      0041 cgt.un 
+      0043 call System.Diagnostics.Trace::Assert
+      0048 ldarg.0 
+      0049 ldfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0054 brtrue.s IL_0039: ldarg.0
+      0056 ret 
+      0057 ldarg.0 
+      0058 ldarg.0 
+      0059 ldfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0064 call System.Windows.Window::set_Owner
+      0069 ldarg.0 
+      0070 ldfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0075 ldarg.0 
+      0076 ldftn LibVLCSharp.WPF.ForegroundWindow::Wndhost_Closing
+      0082 newobj System.ComponentModel.CancelEventHandler::.ctor
+      0087 callvirt System.Windows.Window::add_Closing
+      0092 ldarg.0 
+      0093 ldfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0098 ldarg.0 
+      0099 ldftn LibVLCSharp.WPF.ForegroundWindow::Wndhost_LocationChanged
+      0105 newobj System.EventHandler::.ctor
+      0110 callvirt System.Windows.Window::add_LocationChanged
+      0115 ldarg.0 
+      0116 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0121 ldarg.0 
+      0122 ldftn LibVLCSharp.WPF.ForegroundWindow::Bckgnd_LayoutUpdated
+      0128 newobj System.EventHandler::.ctor
+      0133 callvirt System.Windows.UIElement::add_LayoutUpdated
+      0138 ldarg.0 
+      0139 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0144 ldarg.0 
+      0145 ldftn LibVLCSharp.WPF.ForegroundWindow::Bckgnd_SizeChanged
+      0151 newobj System.Windows.SizeChangedEventHandler::.ctor
+      0156 callvirt System.Windows.FrameworkElement::add_SizeChanged
+      0161 ldarg.0 
+      0162 call LibVLCSharp.WPF.ForegroundWindow::AlignWithBackground
+      0167 ldarg.0 
+      0168 call System.Windows.Window::Show
+      0173 ldarg.0 
+      0174 ldfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0179 callvirt System.Windows.UIElement::Focus
+      0184 pop 
+      0185 leave.s IL_00ce: ret
+      0187 stloc.0 
+      0188 ldarg.0 
+      0189 call System.Windows.Window::Hide
+      0194 ldstr "Unable to create WPF Window in VideoView."
+      0199 ldloc.0 
+      0200 newobj LibVLCSharp.Shared.VLCException::.ctor
+      0205 throw 
+      0206 ret 
+
+  method: Bckgnd_LayoutUpdated [Private, HideBySig]
+    params: sender:System.Object, e:System.EventArgs
+    IL (3):
+      0000 ldarg.0 
+      0001 call LibVLCSharp.WPF.ForegroundWindow::AlignWithBackground
+      0006 ret 
+
+  method: Wndhost_LocationChanged [Private, HideBySig]
+    params: sender:System.Object, e:System.EventArgs
+    IL (3):
+      0000 ldarg.0 
+      0001 call LibVLCSharp.WPF.ForegroundWindow::AlignWithBackground
+      0006 ret 
+
+  method: Bckgnd_SizeChanged [Private, HideBySig]
+    params: sender:System.Object, e:System.Windows.SizeChangedEventArgs
+    IL (3):
+      0000 ldarg.0 
+      0001 call LibVLCSharp.WPF.ForegroundWindow::AlignWithBackground
+      0006 ret 
+
+  method: AlignWithBackground [Private, HideBySig]
+    IL (132):
+      0000 ldarg.0 
+      0001 ldfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0006 brtrue.s IL_0009: ldarg.0
+      0008 ret 
+      0009 ldarg.0 
+      0010 ldfld LibVLCSharp.WPF.ForegroundWindow::_wndhost
+      0015 call System.Windows.PresentationSource::FromVisual
+      0020 stloc.0 
+      0021 ldloc.0 
+      0022 brtrue.s IL_0019: ldarg.0
+      0024 ret 
+      0025 ldarg.0 
+      0026 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0031 call System.Windows.PresentationSource::FromVisual
+      0036 brtrue.s IL_0027: ldarg.0
+      0038 ret 
+      0039 ldarg.0 
+      0040 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0045 callvirt System.Windows.FrameworkElement::get_ActualWidth
+      0050 call System.Double::IsNaN
+      0055 brtrue.s IL_0077: ret
+      0057 ldarg.0 
+      0058 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0063 callvirt System.Windows.FrameworkElement::get_ActualHeight
+      0068 call System.Double::IsNaN
+      0073 brtrue.s IL_0077: ret
+      0075 ldarg.0 
+      0076 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0081 callvirt System.Windows.FrameworkElement::get_ActualWidth
+      0086 ldc.r8 0
+      0095 beq.s IL_0077: ret
+      0097 ldarg.0 
+      0098 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0103 callvirt System.Windows.FrameworkElement::get_ActualHeight
+      0108 ldc.r8 0
+      0117 bne.un.s IL_0078: ldarg.0
+      0119 ret 
+      0120 ldarg.0 
+      0121 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0126 ldarg.0 
+      0127 ldfld LibVLCSharp.WPF.ForegroundWindow::_zeroPoint
+      0132 callvirt System.Windows.Media.Visual::PointToScreen
+      0137 stloc.1 
+      0138 ldloc.0 
+      0139 callvirt System.Windows.PresentationSource::get_CompositionTarget
+      0144 callvirt System.Windows.Media.CompositionTarget::get_TransformFromDevice
+      0149 stloc.s V_5
+      0151 ldloca.s V_5
+      0153 ldloc.1 
+      0154 call System.Windows.Media.Matrix::Transform
+      0159 stloc.2 
+      0160 ldarg.0 
+      0161 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0166 ldarg.0 
+      0167 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0172 callvirt System.Windows.FrameworkElement::get_ActualWidth
+      0177 ldarg.0 
+      0178 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0183 callvirt System.Windows.FrameworkElement::get_ActualHeight
+      0188 newobj System.Windows.Point::.ctor
+      0193 callvirt System.Windows.Media.Visual::PointToScreen
+      0198 stloc.3 
+      0199 ldloc.0 
+      0200 callvirt System.Windows.PresentationSource::get_CompositionTarget
+      0205 callvirt System.Windows.Media.CompositionTarget::get_TransformFromDevice
+      0210 stloc.s V_5
+      0212 ldloca.s V_5
+      0214 ldloc.3 
+      0215 call System.Windows.Media.Matrix::Transform
+      0220 stloc.s V_4
+      0222 ldarg.0 
+      0223 ldloca.s V_2
+      0225 call System.Windows.Point::get_X
+      0230 ldloca.s V_4
+      0232 call System.Windows.Point::get_X
+      0237 call System.Math::Min
+      0242 call System.Windows.Window::set_Left
+      0247 ldarg.0 
+      0248 ldloca.s V_2
+      0250 call System.Windows.Point::get_Y
+      0255 ldloca.s V_4
+      0257 call System.Windows.Point::get_Y
+      0262 call System.Math::Min
+      0267 call System.Windows.Window::set_Top
+      0272 ldarg.0 
+      0273 ldloca.s V_4
+      0275 call System.Windows.Point::get_X
+      0280 ldloca.s V_2
+      0282 call System.Windows.Point::get_X
+      0287 sub 
+      0288 call System.Math::Abs
+      0293 call System.Windows.FrameworkElement::set_Width
+      0298 ldarg.0 
+      0299 ldloca.s V_4
+      0301 call System.Windows.Point::get_Y
+      0306 ldloca.s V_2
+      0308 call System.Windows.Point::get_Y
+      0313 sub 
+      0314 call System.Math::Abs
+      0319 call System.Windows.FrameworkElement::set_Height
+      0324 ldarg.0 
+      0325 call System.Windows.FrameworkElement::get_Width
+      0330 ldarg.0 
+      0331 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0336 callvirt System.Windows.FrameworkElement::get_ActualWidth
+      0341 sub 
+      0342 call System.Math::Abs
+      0347 ldarg.0 
+      0348 call System.Windows.FrameworkElement::get_Height
+      0353 ldarg.0 
+      0354 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0359 callvirt System.Windows.FrameworkElement::get_ActualHeight
+      0364 sub 
+      0365 call System.Math::Abs
+      0370 add 
+      0371 ldc.r8 0,5
+      0380 ble.un.s IL_01a8: ret
+      0382 ldarg.0 
+      0383 ldarg.0 
+      0384 call System.Windows.FrameworkElement::get_Width
+      0389 ldarg.0 
+      0390 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0395 callvirt System.Windows.FrameworkElement::get_ActualWidth
+      0400 div 
+      0401 ldarg.0 
+      0402 call System.Windows.FrameworkElement::get_Height
+      0407 ldarg.0 
+      0408 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0413 callvirt System.Windows.FrameworkElement::get_ActualHeight
+      0418 div 
+      0419 call LibVLCSharp.WPF.ForegroundWindow::ScaleWindowContent
+      0424 ret 
+
+  method: ScaleWindowContent [Private, HideBySig]
+    params: scaleX:System.Double, scaleY:System.Double
+    IL (37):
+      0000 ldarg.0 
+      0001 callvirt System.Windows.Media.Visual::get_VisualChildrenCount
+      0006 ldc.i4.0 
+      0007 bgt.s IL_000a: ldarg.0
+      0009 ret 
+      0010 ldarg.0 
+      0011 ldc.i4.0 
+      0012 callvirt System.Windows.Media.Visual::GetVisualChild
+      0017 castclass System.Windows.FrameworkElement
+      0022 stloc.0 
+      0023 ldloc.0 
+      0024 callvirt System.Windows.FrameworkElement::get_LayoutTransform
+      0029 isinst System.Windows.Media.ScaleTransform
+      0034 stloc.1 
+      0035 ldloc.1 
+      0036 brfalse.s IL_0057: ldloc.0
+      0038 ldloc.1 
+      0039 callvirt System.Windows.Media.ScaleTransform::get_ScaleX
+      0044 ldarg.1 
+      0045 sub 
+      0046 call System.Math::Abs
+      0051 ldc.r8 0,01
+      0060 bge.un.s IL_0057: ldloc.0
+      0062 ldloc.1 
+      0063 callvirt System.Windows.Media.ScaleTransform::get_ScaleY
+      0068 ldarg.2 
+      0069 sub 
+      0070 call System.Math::Abs
+      0075 ldc.r8 0,01
+      0084 bge.un.s IL_0057: ldloc.0
+      0086 ret 
+      0087 ldloc.0 
+      0088 ldarg.1 
+      0089 ldarg.2 
+      0090 newobj System.Windows.Media.ScaleTransform::.ctor
+      0095 callvirt System.Windows.FrameworkElement::set_LayoutTransform
+      0100 ret 
+
+  method: Wndhost_Closing [Private, HideBySig]
+    params: sender:System.Object, e:System.ComponentModel.CancelEventArgs
+    IL (25):
+      0000 ldarg.2 
+      0001 callvirt System.ComponentModel.CancelEventArgs::get_Cancel
+      0006 brfalse.s IL_0009: ldarg.0
+      0008 ret 
+      0009 ldarg.0 
+      0010 call System.Windows.Window::Close
+      0015 ldarg.0 
+      0016 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0021 ldarg.0 
+      0022 ldftn LibVLCSharp.WPF.ForegroundWindow::Background_DataContextChanged
+      0028 newobj System.Windows.DependencyPropertyChangedEventHandler::.ctor
+      0033 callvirt System.Windows.FrameworkElement::remove_DataContextChanged
+      0038 ldarg.0 
+      0039 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0044 ldarg.0 
+      0045 ldftn LibVLCSharp.WPF.ForegroundWindow::Background_Loaded
+      0051 newobj System.Windows.RoutedEventHandler::.ctor
+      0056 callvirt System.Windows.FrameworkElement::remove_Loaded
+      0061 ldarg.0 
+      0062 ldfld LibVLCSharp.WPF.ForegroundWindow::_bckgnd
+      0067 ldarg.0 
+      0068 ldftn LibVLCSharp.WPF.ForegroundWindow::Background_Unloaded
+      0074 newobj System.Windows.RoutedEventHandler::.ctor
+      0079 callvirt System.Windows.FrameworkElement::remove_Unloaded
+      0084 ret 
+
+=== Type: LibVLCSharp.WPF.VideoHwndHost (base: System.Windows.Interop.HwndHost) ===
+
+  method: BuildWindowCore [Family, Virtual, HideBySig]
+    params: hwndParent:System.Runtime.InteropServices.HandleRef
+    IL (19):
+      0000 ldc.i4.s 32
+      0002 ldstr "static"
+      0007 ldsfld System.String::Empty
+      0012 ldc.i4 1375731712
+      0017 ldc.i4.0 
+      0018 ldc.i4.0 
+      0019 ldc.i4.0 
+      0020 ldc.i4.0 
+      0021 ldarga.s hwndParent
+      0023 call System.Runtime.InteropServices.HandleRef::get_Handle
+      0028 ldsfld System.IntPtr::Zero
+      0033 ldsfld System.IntPtr::Zero
+      0038 ldsfld System.IntPtr::Zero
+      0043 call LibVLCSharp.WPF.User32Wrapper::CreateWindowEx
+      0048 stloc.0 
+      0049 ldarg.0 
+      0050 ldloc.0 
+      0051 newobj System.Runtime.InteropServices.HandleRef::.ctor
+      0056 ret 
+
+  method: DestroyWindowCore [Family, Virtual, HideBySig]
+    params: hwnd:System.Runtime.InteropServices.HandleRef
+    IL (5):
+      0000 ldarga.s hwnd
+      0002 call System.Runtime.InteropServices.HandleRef::get_Handle
+      0007 call LibVLCSharp.WPF.User32Wrapper::DestroyWindow
+      0012 pop 
+      0013 ret 
+
+  method: .ctor [Public, HideBySig, SpecialName, RTSpecialName]
+    IL (3):
+      0000 ldarg.0 
+      0001 call System.Windows.Interop.HwndHost::.ctor
+      0006 ret 
+
+=== Type: LibVLCSharp.WPF.VideoView (base: System.Windows.Controls.ContentControl) ===
+  field: PART_PlayerHost : System.String
+  field: _videoHwndHost : LibVLCSharp.WPF.VideoHwndHost
+  field: MediaPlayerProperty : System.Windows.DependencyProperty
+  field: <ForegroundWindow>k__BackingField : LibVLCSharp.WPF.ForegroundWindow
+  field: <IsUpdatingContent>k__BackingField : System.Boolean
+  field: <ViewContent>k__BackingField : System.Windows.UIElement
+  field: disposedValue : System.Boolean
+
+  method: .ctor [Public, HideBySig, SpecialName, RTSpecialName]
+    IL (7):
+      0000 ldarg.0 
+      0001 call System.Windows.Controls.ContentControl::.ctor
+      0006 ldarg.0 
+      0007 ldtoken LibVLCSharp.WPF.VideoView
+      0012 call System.Type::GetTypeFromHandle
+      0017 call System.Windows.FrameworkElement::set_DefaultStyleKey
+      0022 ret 
+
+  method: get_MediaPlayer [Public, Final, Virtual, HideBySig, VtableLayoutMask, SpecialName]
+    IL (5):
+      0000 ldarg.0 
+      0001 ldsfld LibVLCSharp.WPF.VideoView::MediaPlayerProperty
+      0006 call System.Windows.DependencyObject::GetValue
+      0011 isinst LibVLCSharp.Shared.MediaPlayer
+      0016 ret 
+
+  method: set_MediaPlayer [Public, Final, Virtual, HideBySig, VtableLayoutMask, SpecialName]
+    params: value:LibVLCSharp.Shared.MediaPlayer
+    IL (5):
+      0000 ldarg.0 
+      0001 ldsfld LibVLCSharp.WPF.VideoView::MediaPlayerProperty
+      0006 ldarg.1 
+      0007 call System.Windows.DependencyObject::SetValue
+      0012 ret 
+
+  method: OnMediaPlayerChanged [Private, Static, HideBySig]
+    params: d:System.Windows.DependencyObject, e:System.Windows.DependencyPropertyChangedEventArgs
+    IL (21):
+      0000 ldarga.s e
+      0002 call System.Windows.DependencyPropertyChangedEventArgs::get_OldValue
+      0007 isinst LibVLCSharp.Shared.MediaPlayer
+      0012 stloc.0 
+      0013 ldloc.0 
+      0014 brfalse.s IL_001c: ldarga.s e
+      0016 ldarg.0 
+      0017 castclass LibVLCSharp.WPF.VideoView
+      0022 ldloc.0 
+      0023 callvirt LibVLCSharp.WPF.VideoView::DetachMediaPlayer
+      0028 ldarga.s e
+      0030 call System.Windows.DependencyPropertyChangedEventArgs::get_NewValue
+      0035 isinst LibVLCSharp.Shared.MediaPlayer
+      0040 stloc.1 
+      0041 ldloc.1 
+      0042 brfalse.s IL_0038: ret
+      0044 ldarg.0 
+      0045 castclass LibVLCSharp.WPF.VideoView
+      0050 ldloc.1 
+      0051 callvirt LibVLCSharp.WPF.VideoView::AttachMediaPlayer
+      0056 ret 
+
+  method: get_ForegroundWindow [Private, HideBySig, SpecialName]
+    IL (3):
+      0000 ldarg.0 
+      0001 ldfld LibVLCSharp.WPF.VideoView::<ForegroundWindow>k__BackingField
+      0006 ret 
+
+  method: set_ForegroundWindow [Private, HideBySig, SpecialName]
+    params: value:LibVLCSharp.WPF.ForegroundWindow
+    IL (4):
+      0000 ldarg.0 
+      0001 ldarg.1 
+      0002 stfld LibVLCSharp.WPF.VideoView::<ForegroundWindow>k__BackingField
+      0007 ret 
+
+  method: get_IsUpdatingContent [Private, HideBySig, SpecialName]
+    IL (3):
+      0000 ldarg.0 
+      0001 ldfld LibVLCSharp.WPF.VideoView::<IsUpdatingContent>k__BackingField
+      0006 ret 
+
+  method: set_IsUpdatingContent [Private, HideBySig, SpecialName]
+    params: value:System.Boolean
+    IL (4):
+      0000 ldarg.0 
+      0001 ldarg.1 
+      0002 stfld LibVLCSharp.WPF.VideoView::<IsUpdatingContent>k__BackingField
+      0007 ret 
+
+  method: get_ViewContent [Private, HideBySig, SpecialName]
+    IL (3):
+      0000 ldarg.0 
+      0001 ldfld LibVLCSharp.WPF.VideoView::<ViewContent>k__BackingField
+      0006 ret 
+
+  method: set_ViewContent [Private, HideBySig, SpecialName]
+    params: value:System.Windows.UIElement
+    IL (4):
+      0000 ldarg.0 
+      0001 ldarg.1 
+      0002 stfld LibVLCSharp.WPF.VideoView::<ViewContent>k__BackingField
+      0007 ret 
+
+  method: AttachMediaPlayer [Private, HideBySig]
+    params: mediaPlayer:LibVLCSharp.Shared.MediaPlayer
+    IL (16):
+      0000 ldarg.1 
+      0001 brfalse.s IL_002e: ret
+      0003 ldarg.1 
+      0004 callvirt LibVLCSharp.Shared.Internal::get_NativeReference
+      0009 ldsfld System.IntPtr::Zero
+      0014 call System.IntPtr::op_Inequality
+      0019 brfalse.s IL_002e: ret
+      0021 ldarg.0 
+      0022 ldfld LibVLCSharp.WPF.VideoView::_videoHwndHost
+      0027 brfalse.s IL_002e: ret
+      0029 ldarg.1 
+      0030 ldarg.0 
+      0031 ldfld LibVLCSharp.WPF.VideoView::_videoHwndHost
+      0036 callvirt System.Windows.Interop.HwndHost::get_Handle
+      0041 callvirt LibVLCSharp.Shared.MediaPlayer::set_Hwnd
+      0046 ret 
+
+  method: DetachMediaPlayer [Private, HideBySig]
+    params: mediaPlayer:LibVLCSharp.Shared.MediaPlayer
+    IL (11):
+      0000 ldarg.1 
+      0001 brfalse.s IL_0020: ret
+      0003 ldarg.1 
+      0004 callvirt LibVLCSharp.Shared.Internal::get_NativeReference
+      0009 ldsfld System.IntPtr::Zero
+      0014 call System.IntPtr::op_Inequality
+      0019 brfalse.s IL_0020: ret
+      0021 ldarg.1 
+      0022 ldsfld System.IntPtr::Zero
+      0027 callvirt LibVLCSharp.Shared.MediaPlayer::set_Hwnd
+      0032 ret 
+
+  method: OnContentChanged [Family, Virtual, HideBySig]
+    params: oldContent:System.Object, newContent:System.Object
+    IL (35):
+      0000 ldarg.0 
+      0001 ldarg.1 
+      0002 ldarg.2 
+      0003 call System.Windows.Controls.ContentControl::OnContentChanged
+      0008 ldarg.0 
+      0009 call LibVLCSharp.WPF.VideoView::get_IsDesignMode
+      0014 brtrue.s IL_0018: ret
+      0016 ldarg.0 
+      0017 call LibVLCSharp.WPF.VideoView::get_IsUpdatingContent
+      0022 brfalse.s IL_0019: ldarg.0
+      0024 ret 
+      0025 ldarg.0 
+      0026 ldc.i4.1 
+      0027 call LibVLCSharp.WPF.VideoView::set_IsUpdatingContent
+      0032 ldarg.0 
+      0033 ldnull 
+      0034 call System.Windows.Controls.ContentControl::set_Content
+      0039 leave.s IL_0031: ldarg.0
+      0041 ldarg.0 
+      0042 ldc.i4.0 
+      0043 call LibVLCSharp.WPF.VideoView::set_IsUpdatingContent
+      0048 endfinally 
+      0049 ldarg.0 
+      0050 ldarg.2 
+      0051 isinst System.Windows.UIElement
+      0056 call LibVLCSharp.WPF.VideoView::set_ViewContent
+      0061 ldarg.0 
+      0062 call LibVLCSharp.WPF.VideoView::get_ForegroundWindow
+      0067 brfalse.s IL_0056: ret
+      0069 ldarg.0 
+      0070 call LibVLCSharp.WPF.VideoView::get_ForegroundWindow
+      0075 ldarg.0 
+      0076 call LibVLCSharp.WPF.VideoView::get_ViewContent
+      0081 callvirt LibVLCSharp.WPF.ForegroundWindow::set_OverlayContent
+      0086 ret 
+
+  method: Dispose [Family, Virtual, HideBySig, VtableLayoutMask]
+    params: disposing:System.Boolean
+    IL (39):
+      0000 ldarg.0 
+      0001 ldfld LibVLCSharp.WPF.VideoView::disposedValue
+      0006 brtrue.s IL_005d: ret
+      0008 ldarg.1 
+      0009 brfalse.s IL_0048: ldarg.0
+      0011 ldarg.0 
+      0012 call LibVLCSharp.WPF.VideoView::get_MediaPlayer
+      0017 brfalse.s IL_001f: ldarg.0
+      0019 ldarg.0 
+      0020 ldarg.0 
+      0021 call LibVLCSharp.WPF.VideoView::get_MediaPlayer
+      0026 call LibVLCSharp.WPF.VideoView::DetachMediaPlayer
+      0031 ldarg.0 
+      0032 ldfld LibVLCSharp.WPF.VideoView::_videoHwndHost
+      0037 dup 
+      0038 brtrue.s IL_002b: call System.Void System.Windows.Interop.HwndHost::Dispose()
+      0040 pop 
+      0041 br.s IL_0030: ldarg.0
+      0043 call System.Windows.Interop.HwndHost::Dispose
+      0048 ldarg.0 
+      0049 ldnull 
+      0050 stfld LibVLCSharp.WPF.VideoView::_videoHwndHost
+      0055 ldarg.0 
+      0056 call LibVLCSharp.WPF.VideoView::get_ForegroundWindow
+      0061 dup 
+      0062 brtrue.s IL_0043: call System.Void System.Windows.Window::Close()
+      0064 pop 
+      0065 br.s IL_0048: ldarg.0
+      0067 call System.Windows.Window::Close
+      0072 ldarg.0 
+      0073 ldnull 
+      0074 call LibVLCSharp.WPF.VideoView::set_ViewContent
+      0079 ldarg.0 
+      0080 ldnull 
+      0081 call LibVLCSharp.WPF.VideoView::set_ForegroundWindow
+      0086 ldarg.0 
+      0087 ldc.i4.1 
+      0088 stfld LibVLCSharp.WPF.VideoView::disposedValue
+      0093 ret 
+
+  method: Dispose [Public, Final, Virtual, HideBySig, VtableLayoutMask]
+    IL (4):
+      0000 ldarg.0 
+      0001 ldc.i4.1 
+      0002 callvirt LibVLCSharp.WPF.VideoView::Dispose
+      0007 ret 
+
+  method: .cctor [Private, Static, HideBySig, SpecialName, RTSpecialName]
+    IL (13):
+      0000 ldstr "MediaPlayer"
+      0005 ldtoken LibVLCSharp.Shared.MediaPlayer
+      0010 call System.Type::GetTypeFromHandle
+      0015 ldtoken LibVLCSharp.WPF.VideoView
+      0020 call System.Type::GetTypeFromHandle
+      0025 ldnull 
+      0026 ldnull 
+      0027 ldftn LibVLCSharp.WPF.VideoView::OnMediaPlayerChanged
+      0033 newobj System.Windows.PropertyChangedCallback::.ctor
+      0038 newobj System.Windows.PropertyMetadata::.ctor
+      0043 call System.Windows.DependencyProperty::Register
+      0048 stsfld LibVLCSharp.WPF.VideoView::MediaPlayerProperty
+      0053 ret 

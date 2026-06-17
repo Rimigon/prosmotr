@@ -77,6 +77,25 @@ public sealed class LibVlcProvider : IDisposable
 
         var pluginsDir = Path.Combine(AppContext.BaseDirectory, "libvlc", "win-x64", "plugins");
         var cacheFile = Path.Combine(pluginsDir, "plugins.dat");
+        var localCacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Prosmotr");
+        var localCacheFile = Path.Combine(localCacheDir, "plugins.dat");
+
+        // Если кэш плагинов отсутствует после очистки/перепубликации app\, пробуем восстановить
+        // его из LocalAppData. Это устраняет повторную генерацию plugins.dat (5-10 с) после
+        // каждого запуска publish.ps1. При несовместимости версии LibVLC сама пересоздаст файл.
+        if (!File.Exists(cacheFile) && File.Exists(localCacheFile))
+        {
+            try
+            {
+                Directory.CreateDirectory(pluginsDir);
+                File.Copy(localCacheFile, cacheFile, overwrite: false);
+                AppLog.Write("[Perf] Restored plugins.dat from LocalAppData");
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("LibVlcProvider.Warmup restore cache", ex);
+            }
+        }
 
         // Генерация кэша — долгая операция, выполняем БЕЗ lock.
         if (!File.Exists(cacheFile))
@@ -86,6 +105,15 @@ public sealed class LibVlcProvider : IDisposable
                 var sw = Stopwatch.StartNew();
                 using var temp = new LibVLC("--reset-plugins-cache", "--quiet");
                 AppLog.Write($"[Perf] Generated plugins.dat: {sw.ElapsedMilliseconds} ms");
+                try
+                {
+                    Directory.CreateDirectory(localCacheDir);
+                    File.Copy(cacheFile, localCacheFile, overwrite: true);
+                }
+                catch (Exception copyEx)
+                {
+                    AppLog.Error("LibVlcProvider.Warmup save local cache", copyEx);
+                }
             }
             catch (Exception ex)
             {

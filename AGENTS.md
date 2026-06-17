@@ -73,18 +73,51 @@ dotnet test tests\Prosmotr.Tests\Prosmotr.Tests.csproj
 > Если пользователь говорит «изменений нет / кнопки нет», первым делом проверь, **что именно он
 > запускает** (ярлык → `app\`), и переопубликуй туда.
 
-### 3.2. Single-file publish ЗАПРЕЩЁН
+### 3.2. Перед проверкой изменений: закрыть процессы и очистить кэш
+
+WPF + LibVLC агрессивно кэшируют нативные сборки, ресурсы XAML/BAML и плагины VLC. Чтобы
+изменения в коде/XAML точно попали в запускаемое приложение и не «прилипали» старые версии:
+
+1. **Закрой все процессы `Prosmotr.exe`** (включая зависшие/фоновые):  
+   ```powershell
+   Get-Process -Name "Prosmotr" -ErrorAction SilentlyContinue | Stop-Process -Force
+   ```
+2. **Полностью очисти папку `app\`** (то, что видит ярлык):  
+   ```powershell
+   Remove-Item -Path "app" -Recurse -Force -ErrorAction SilentlyContinue
+   ```
+3. **Очисти кэш сборки** (`bin`/`obj`), чтобы не осталось stale BAML/ресурсов:  
+   ```powershell
+   Remove-Item -Path "src\Prosmotr\bin","src\Prosmotr\obj" -Recurse -Force -ErrorAction SilentlyContinue
+   Remove-Item -Path "tests\Prosmotr.Tests\bin","tests\Prosmotr.Tests\obj" -Recurse -Force -ErrorAction SilentlyContinue
+   ```
+4. **Очисти временные файлы приложения в `%TEMP%`** (заблокированные DLL/lock-файлы .NET):  
+   ```powershell
+   Remove-Item -Path "$env:TEMP\Prosmotr*" -Recurse -Force -ErrorAction SilentlyContinue
+   Remove-Item -Path "$env:TEMP\\.NET*" -Recurse -Force -ErrorAction SilentlyContinue
+   ```
+5. Сразу после очистки пересобери и переопубликуй в `app\` (иначе кэш/lock-файлы могут
+   восстановиться при промежуточных действиях):  
+   ```powershell
+   dotnet publish src\Prosmotr\Prosmotr.csproj -c Release -o app
+   ```
+
+> Без шагов 1–4 нередко возникает эффект «я только что исправил, а изменений нет»: процесс
+> держит старые DLL, в `app\` остаются устаревшие плагины LibVLC или BAML из `obj\`.
+> Очистку и публикацию выполняй как единый непрерывный шаг.
+
+### 3.3. Single-file publish ЗАПРЕЩЁН
 
 Single-file ломает загрузку нативных плагинов LibVLC. Публикуй обычным способом (framework-dependent).
 После сборки в `…\libvlc\win-x64\` должны лежать `libvlc.dll`, `libvlccore.dll` и папка `plugins\`.
 Это отражено комментарием в `Prosmotr.csproj` и в README.
 
-### 3.3. Только x64
+### 3.4. Только x64
 
 Нативные плагины LibVLC грузятся из `libvlc\win-x64`. Процесс обязан быть 64-битным
 (`PlatformTarget=x64`, `Prefer32Bit=false`). Не переключай на x86/AnyCPU-32.
 
-### 3.4. Single-instance + передача пути через named pipe
+### 3.5. Single-instance + передача пути через named pipe
 
 В `App.xaml.cs`: при запуске берётся `Mutex` (`Prosmotr.SingleInstance.v1`). Если экземпляр уже
 запущен — новый процесс отправляет путь работающему через named pipe (`Prosmotr.OpenFile.v1`) и
@@ -247,6 +280,51 @@ View висит на `DataContextChanged`, а не только на `Loaded` (�
 воспроизведение и освобождает `Media`, чтобы нативное окно LibVLC не оставалось «висеть»
 поверх WPF и не держало handle удаляемого/закрываемого файла. Финальный `Dispose` VM всё равно
 отработает через `_pendingDisposal` (`MainViewModel` / `App.OnExit`).
+
+#### Чёрный cover при загрузке первого кадра (белый квадрат при переключении видео)
+
+`LibVLCSharp.WPF.VideoView` рендерит видео в нативное Win32-окно (`VideoHwndHost` — `HwndHost`
+класса `"static"` с `WS_EX_TRANSPARENT`), поверх которого плавает прозрачный `ForegroundWindow`
+с WPF-оверлеем. При смене медиа (`SwitchTo` → `Player.Media = new; Play()`) между остановкой
+старого vout и отрисовкой первого кадра нативное окно закрашивается своей фоновой кистью
+класса `"static"` (светлой/белой) — отсюда **белый квадрат** при переключении видео. WPF-фон
+`VideoHost`/`VideoView` этого **не лечит**: он находится **за** непрозрачным `HwndHost`
+(поэтому правка «чёрный фон VideoHost» убрала лишь белые *полосы по краям*, но не сам *квадрат*).
+`:start-paused` уменьшает вспышку, но не убирает — есть окно до первого кадра.
+
+Решение — чёрный `Border x:Name="SwitchCover"` в оверлее (`Grid.Row="0"`, `Grid.RowSpan="2"`,
+позже всех элементов, кроме `ToastView`): оверлей едет в `ForegroundWindow`, который всегда
+поверх нативного HWND, поэтому opaque-чёрный cover гарантированно перекрывает белый.
+- `VideoViewerViewModel.IsBuffering` (`[ObservableProperty]`): `true` в конструкторе (свежий
+  VM вот-вот грузит), в `BeginPlayback` (старт/`SwitchTo`, в самом начале) и в `Replay`;
+  `false` в `OnPlaying` (первый кадр готов — с `:start-paused` он отрисован до события `Playing`),
+  `OnError` (чтобы видна была плашка ошибки) и `Dispose`.
+- **Load/Play отложены до отрисовки cover'а (критично!).** `BeginPlayback`/`Replay` не зовут
+  `_playback.Load`/`Play` синхронно, а через `LoadAndPlayDeferred` — `Dispatcher.BeginInvoke(
+  Background)`. `Background` выполняется **после** `Render` (паттерн как `MainViewModel` для
+  «после визуальной замены»), поэтому WPF успевает закрасить чёрный cover поверх нативного HWND
+  ДО того, как смена `Media`/`Play` заставит его мигнуть белым. Без этой отсрочки cover
+  ставился Visible синхронно, но WPF красил его лишь на следующем render-цикле — нативное окно
+  успевало мигнуть раньше (белый квадрат/полосы оставались). Поле `_loadGen` (поколение).guard'ит
+  устаревшие отложенные загрузки при быстрой навигации: отрабатывает только последняя SwitchTo/Replay.
+- **MediaPlayer тоже привязывается после Render.** В `OnDataContextChanged`/`OnLoaded` сначала
+  поднимается cover (`UpdateCover`), затем `Video.MediaPlayer = ...` и `vm.Start()` ставятся в
+  `Dispatcher.BeginInvoke(..., DispatcherPriority.Render)`. Иначе смена `MediaPlayer` в LibVLC
+  могла заставить нативное окно мигнуть ещё до того, как cover отрисуется.
+- `VideoViewerView.UpdateCover()` синхронизирует `SwitchCover.Visibility` с `IsBuffering`;
+  вызывается из `OnVmPropertyChanged` (по изменению) и при привязке VM (`OnDataContextChanged`,
+  `OnLoaded`) — чтобы свежий VM, уже лежащий в `IsBuffering=true`, сразу показал cover
+  (PropertyChanged на уже-true значение при подписке не приходит).
+- **Панель управления скрывается на время буферизации.** `UpdateCover()`/`UpdateChromeVisibility()`
+  прячут `ControlBar`, боковые стрелки и инфо-плашку, пока `IsBuffering == true`. Иначе
+  полупрозрачная панель (`#D91A1A1A`) пропускала бы светлый фон нативного HWND в нижней части
+  экрана, и пользователь видел «белые квадраты» именно там. После готовности первого кадра
+  видимость панели восстанавливается по `_controlsShown`/`AutoHideControls`.
+- **Удаление видео в полноэкранном режиме.** `MainViewModel.Delete` перед `StopAndRelease()`
+  устанавливает `videoVm.IsBuffering = true`. Без этого cover поднимался только в `SwitchTo`,
+  а между остановкой старого плеера (очистка HWND LibVLC → белый фон) и переключением на
+  следующий файл весь экран на секунду становился белым. Cover в оверлее закрывает этот
+  промежуток, как при обычном переключении видео.
 
 ### 5.5. Декодирование изображений: нативный WPF vs Magick
 
@@ -588,6 +666,12 @@ ICC-профилями. Magick нормализует/сбрасывает пр�
    до момента, когда основное окно уже на экране.
 4. **Фоновая shell-интеграция** — `TryIntegrateShell()` теперь выполняется через
    `Task.Run(TryIntegrateShell)`, чтобы синхронные операции с реестром не блокировали UI-поток.
+5. **Кэширование `plugins.dat` в `%LOCALAPPDATA%\Prosmotr`.** Генерация кэша плагинов LibVLC
+   (`libvlc\win-x64\plugins\plugins.dat`) занимает 5–10 с на холодном старте. `LibVlcProvider.Warmup`
+   теперь: (а) при отсутствии кэша в `app\` копирует его из `%LOCALAPPDATA%\Prosmotr\plugins.dat`,
+   если он там есть; (б) после генерации сохраняет свежий кэш в `%LOCALAPPDATA%`, чтобы
+   последующие запуски после очистки/перепубликации `app\` не ждали повторного сканирования.
+   Скрипт `publish.ps1` также делает локальную резервную копию `plugins.dat` на время очистки.
 
 **Что НЕ поможет (не делать):**
 - `PublishSingleFile` — **запрещён**, ломает загрузку нативных плагинов LibVLC.
