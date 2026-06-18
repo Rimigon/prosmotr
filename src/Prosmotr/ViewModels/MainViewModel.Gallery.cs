@@ -172,8 +172,8 @@ public sealed partial class MainViewModel
 
     private void PersistAndApplySort()
     {
-        // Сортировка меняет порядок → зафиксированный _lastDeletedIndex устаревает,
-        // восстановление вставило бы файл не на своё место. Инвалидируем undo.
+        // Сортировка меняет порядок → сохранённые индексы удалённых файлов устаревают,
+        // восстановление вставило бы файлы не на своё место. Инвалидируем весь стек undo.
         ClearUndoState();
         _settings.Settings.SortBy = SelectedSortField;
         _settings.Settings.SortDescending = SortDescending;

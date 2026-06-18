@@ -11,8 +11,10 @@ public sealed partial class MainViewModel
     // --- Удаление ---
 
     private bool _isDeleting;
-    private MediaItem? _lastDeletedItem;
-    private int _lastDeletedIndex;
+    private bool _isRestoring;
+
+    /// <summary>Стек удалённых в Корзину файлов: последний элемент — последнее удаление.</summary>
+    private readonly List<DeletedItem> _deletedStack = new();
 
     [RelayCommand(CanExecute = nameof(CanDelete))]
     private async Task Delete()
@@ -71,9 +73,9 @@ public sealed partial class MainViewModel
                 else
                 {
                     // Запоминаем для отмены. Восстановить можно кнопкой на панели,
-                    // а при включённой плашке — ещё и кнопкой «Отменить» в самом тосте.
-                    _lastDeletedItem = cur;
-                    _lastDeletedIndex = index >= 0 ? index : 0;
+                    // контекстным меню или кнопкой «Отменить» в тосте; каждое нажатие
+                    // восстанавливает следующий файл из стека в порядке, обратном удалению.
+                    _deletedStack.Add(new DeletedItem(cur, index >= 0 ? index : 0));
                     RestoreLastDeleteCommand.NotifyCanExecuteChanged();
                     if (notify)
                         _notify.Show($"«{cur.FileName}» перемещён в корзину.", NotificationKind.Success,
@@ -99,32 +101,61 @@ public sealed partial class MainViewModel
     [RelayCommand(CanExecute = nameof(CanRestore))]
     private async Task RestoreLastDelete()
     {
-        // Забираем состояние отмены синхронно до await: иначе повторный клик
-        // (кнопка есть и на тосте, и на панели) запустит второе восстановление того же файла.
-        var item = _lastDeletedItem;
-        if (item == null) return;
-        var index = _lastDeletedIndex;
-        ClearUndoState();
+        // Защита от повторного входа: сама команда остаётся enabled, пока стек не пуст,
+        // но параллельно восстанавливаться не должны — иначе COM/Explorer может зависнуть.
+        if (_isRestoring) return;
+        if (_deletedStack.Count == 0) return;
 
-        var ok = await RecycleBinRestore.RestoreAsync(item.FullPath);
-        if (ok)
+        _isRestoring = true;
+        RestoreLastDeleteCommand.NotifyCanExecuteChanged();
+
+        // Забираем состояние отмены синхронно до await: иначе повторный клик
+        // (кнопка есть и на тосте, и на панели) запустил бы второе восстановление того же файла.
+        var entry = _deletedStack[_deletedStack.Count - 1];
+        _deletedStack.RemoveAt(_deletedStack.Count - 1);
+        RestoreLastDeleteCommand.NotifyCanExecuteChanged();
+
+        AppLog.Write($"RestoreLastDelete start: {entry.Item.FileName}, index={entry.Index}, stackCount={_deletedStack.Count + 1}");
+        try
         {
-            var restored = _library.CreateItem(item.FullPath) ?? item;
-            _nav.InsertAt(restored, index);
-            _notify.Show($"«{restored.FileName}» восстановлен.", NotificationKind.Success);
+            var ok = await RecycleBinRestore.RestoreAsync(entry.Item.FullPath);
+            AppLog.Write($"RestoreLastDelete result: {entry.Item.FileName} -> {(ok ? "OK" : "FAIL")}");
+            if (ok)
+            {
+                var restored = _library.CreateItem(entry.Item.FullPath) ?? entry.Item;
+                _nav.InsertAt(restored, entry.Index);
+                _notify.Show($"«{restored.FileName}» восстановлен.", NotificationKind.Success);
+            }
+            else
+            {
+                // Восстановление не удалось — возвращаем запись обратно в стек,
+                // чтобы пользователь мог попробовать ещё раз.
+                _deletedStack.Add(entry);
+                _notify.Show("Не удалось восстановить файл из корзины.", NotificationKind.Error);
+            }
         }
-        else
+        catch (Exception ex)
         {
+            AppLog.Error("RestoreLastDelete", ex);
+            _deletedStack.Add(entry);
             _notify.Show("Не удалось восстановить файл из корзины.", NotificationKind.Error);
+        }
+        finally
+        {
+            _isRestoring = false;
+            RestoreLastDeleteCommand.NotifyCanExecuteChanged();
         }
     }
 
-    private bool CanRestore => _lastDeletedItem != null;
+    private bool CanRestore => _deletedStack.Count > 0;
 
     private void ClearUndoState()
     {
-        if (_lastDeletedItem == null) return;
-        _lastDeletedItem = null;
+        if (_deletedStack.Count == 0) return;
+        _deletedStack.Clear();
         RestoreLastDeleteCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>Снимок удалённого файла: элемент и его индекс на момент удаления.</summary>
+    private sealed record DeletedItem(MediaItem Item, int Index);
 }

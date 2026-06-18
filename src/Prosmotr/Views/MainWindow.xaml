@@ -115,7 +115,7 @@
 
                     <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,4" />
 
-                    <ui:Button Appearance="Transparent" ToolTip="Восстановить последнее удаление"
+                    <ui:Button Appearance="Transparent" ToolTip="Восстановить удаление"
                                Command="{Binding RestoreLastDeleteCommand}">
                         <ui:Button.Icon><ui:SymbolIcon Symbol="ArrowHookUpLeft24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
                     </ui:Button>

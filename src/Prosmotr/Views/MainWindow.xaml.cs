@@ -297,6 +297,13 @@ public partial class MainWindow : FluentWindow
                 else if (_vm.NextCommand.CanExecute(null))
                     _vm.NextCommand.Execute(null);
                 return true;
+            case Key.Z:
+                if (Keyboard.Modifiers == ModifierKeys.Control && _vm.RestoreLastDeleteCommand.CanExecute(null))
+                {
+                    _vm.RestoreLastDeleteCommand.Execute(null);
+                    return true;
+                }
+                return false;
             case Key.Delete:
             case Key.Decimal:
                 if (_vm.DeleteCommand.CanExecute(null))

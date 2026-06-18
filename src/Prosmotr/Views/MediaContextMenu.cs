@@ -53,7 +53,7 @@ internal static class MediaContextMenu
 
         items.Add(Item("Удалить", () => main.DeleteCommand.Execute(null),
             main.DeleteCommand.CanExecute(null), SymbolRegular.Delete24));
-        items.Add(Item("Восстановить последнее удаление", () => main.RestoreLastDeleteCommand.Execute(null),
+        items.Add(Item("Восстановить удаление", () => main.RestoreLastDeleteCommand.Execute(null),
             main.RestoreLastDeleteCommand.CanExecute(null), SymbolRegular.ArrowHookUpLeft24));
     }
 }
