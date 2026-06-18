@@ -16,6 +16,7 @@ public partial class VideoViewerView : UserControl
     private readonly DispatcherTimer _clickTimer;
     private readonly DispatcherTimer _pauseShowTimer;
     private readonly DispatcherTimer _seekThrottle;
+    private readonly DispatcherTimer _seekCooldown;
     private VideoViewerViewModel? _vm;
     private bool _suppressSlider;
     private bool _isSeekDragging;
@@ -53,6 +54,12 @@ public partial class VideoViewerView : UserControl
         // (визуальные лаги/артефакты). Так перемотка идёт не чаще ~раз в 120 мс.
         _seekThrottle = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         _seekThrottle.Tick += OnSeekThrottleTick;
+
+        // После drag seek'а плеер некоторое время присылает TimeChanged со старыми позициями,
+        // пока декодер не приземлится. Без задержки сброса _suppressSlider ползунок резко
+        // дергается назад, а следующее движение пользователя — вперёд, создавая скачки.
+        _seekCooldown = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+        _seekCooldown.Tick += OnSeekCooldownTick;
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -156,6 +163,8 @@ public partial class VideoViewerView : UserControl
         _pauseShowTimer.Tick -= OnPauseShowTimerTick;
         _seekThrottle.Stop();
         _seekThrottle.Tick -= OnSeekThrottleTick;
+        _seekCooldown.Stop();
+        _seekCooldown.Tick -= OnSeekCooldownTick;
         _isSeekDragging = false;
         _hasPendingSeek = false;
 
@@ -199,9 +208,10 @@ public partial class VideoViewerView : UserControl
 
         if (e.PropertyName == nameof(VideoViewerViewModel.PositionMs))
         {
-            // Во время перетаскивания не двигаем ползунок под курсором пользователя —
-            // позицией управляет drag, а события плеера подхватятся после отпускания.
-            if (_isSeekDragging) return;
+            // Во время перетаскивания и некоторое время после seek'а не двигаем ползунок
+            // под курсором пользователя — позицией управляет drag, а события плеера
+            // подхватятся после "приземления" декодера (см. _seekCooldown).
+            if (_isSeekDragging || _seekCooldown.IsEnabled) return;
             _suppressSlider = true;
             PositionSlider.Value = _vm.PositionMs;
             _suppressSlider = false;
@@ -270,7 +280,10 @@ public partial class VideoViewerView : UserControl
         _isSeekDragging = false;
         _seekThrottle.Stop();
         _hasPendingSeek = false;
-        _vm?.SeekTo(PositionSlider.Value); // финальная точная перемотка на отпущенную позицию
+        // Финальная перемотка на отпущенную позицию. Для drag не обновляем PositionMs
+        // из VM — ползунок уже стоит у пользователя; актуальная позиция придёт позже.
+        _vm?.SeekTo(PositionSlider.Value, isDrag: true);
+        ArmSeekCooldown();
     }
 
     private void OnSeekThrottleTick(object? sender, EventArgs e)
@@ -279,8 +292,28 @@ public partial class VideoViewerView : UserControl
         if (_hasPendingSeek && _vm != null)
         {
             _hasPendingSeek = false;
-            _vm.SeekTo(_pendingSeekMs);
+            // Drag таймлайна уже дросселирован 120 мс; здесь не обновляем PositionMs
+            // принудительно, чтобы ползунок не прыгал на keyframe fast-seek'а.
+            _vm.SeekTo(_pendingSeekMs, isDrag: true);
+            ArmSeekCooldown();
         }
+    }
+
+    private void ArmSeekCooldown()
+    {
+        // После drag seek'а игнорируем TimeChanged от плеера ~180 мс: декодер ещё
+        // "приземляется" и может прислать промежуточную позицию, из-за чего ползунок
+        // дергается назад/вперёд. По окончании cooldown'а ползунок синхронизируется
+        // через обычный OnVmPropertyChanged (PositionMs).
+        _seekCooldown.Stop();
+        _seekCooldown.Start();
+    }
+
+    private void OnSeekCooldownTick(object? sender, EventArgs e)
+    {
+        _seekCooldown.Stop();
+        // Cooldown только снимает блокировку с TimeChanged; принудительная синхронизация
+        // здесь не нужна — следующее актуальное событие от плеера обновит ползунок.
     }
 
     // --- Клик по области видео: один — пауза, двойной — полный экран ---

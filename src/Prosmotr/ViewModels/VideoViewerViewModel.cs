@@ -44,6 +44,19 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     // Поколение отложенной загрузки (LoadAndPlayDeferred): инкремент на каждый Start/SwitchTo/Replay.
     // Победила последняя — устаревшие отложенные Load/Play (от быстрой навигации) пропускаются.
     private int _loadGen;
+    // Если true — после следующего OnPlaying сразу ставим плеер на паузу.
+    // Используется при seek назад из состояния EndReached: вместо автовоспроизведения
+    // оставляем видео на паузе на выбранной позиции.
+    private bool _pauseAfterStart;
+    // После клавиатурного/кликового seek'а игнорируем TimeChanged ~180 мс: декодер может
+    // прислать промежуточную/устаревшую позицию, которая перезапишет PositionMs назад.
+    private readonly DispatcherTimer _seekCooldown;
+    private bool _seekCooldownActive;
+    // Дросселирование клавиатурных шагов: при удержании стрелки система шлёт повторы
+    // очень часто, а LibVLC не успевает обрабатывать seek'и на высокой скорости.
+    // Накапливаем направления и выполняем один seek по таймеру.
+    private readonly DispatcherTimer _stepThrottle;
+    private int _pendingStepCount;
 
     public MediaItem Item { get; private set; }
     public MediaPlayer Player => _playback.Player;
@@ -119,6 +132,12 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         // Свежий VM вот-вот начнёт загрузку: сразу отмечаем «буферизацию», чтобы View показал
         // чёрный cover ещё до первого OnLoaded/Start (и скрыл белый фон нативного HWND).
         IsBuffering = true;
+
+        _seekCooldown = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+        _seekCooldown.Tick += (_, _) => { _seekCooldown.Stop(); _seekCooldownActive = false; };
+
+        _stepThrottle = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
+        _stepThrottle.Tick += (_, _) => ExecutePendingSteps();
     }
 
     /// <summary>Запускается из View после загрузки VideoView (когда готов нативный HWND).</summary>
@@ -218,7 +237,20 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private void TogglePlay()
     {
-        if (IsEnded) { Replay(); return; }
+        // Если видео дошло до конца (EndReached) — перезапускаем сначала.
+        // После EndReached LibVLC может оставлять плеер в специфичном состоянии,
+        // в котором TogglePause не работает. Если плеер не играет (например, после
+        // seek назад из конца) — явно запускаем Play.
+        if (IsEnded)
+        {
+            Replay();
+            return;
+        }
+        if (!_playback.IsPlaying)
+        {
+            _playback.Play();
+            return;
+        }
         _playback.TogglePause();
     }
 
@@ -247,23 +279,44 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private void StepForward()
     {
-        if (_settings.Settings.FrameByFrameSeek)
-            _playback.NextFrame();                                 // ровно один кадр вперёд (с паузой)
-        else
-            SeekTo(Math.Min(PositionMs + StepMs, LengthMs));
+        _pendingStepCount++;
+        if (!_stepThrottle.IsEnabled) _stepThrottle.Start();
     }
 
     [RelayCommand]
     private void StepBackward()
     {
+        _pendingStepCount--;
+        if (!_stepThrottle.IsEnabled) _stepThrottle.Start();
+    }
+
+    private void ExecutePendingSteps()
+    {
+        _stepThrottle.Stop();
+        var steps = _pendingStepCount;
+        _pendingStepCount = 0;
+        if (steps == 0) return;
+
         if (_settings.Settings.FrameByFrameSeek)
         {
-            _playback.Pause();                                     // покадрово — на паузе, как и вперёд
-            SeekTo(Math.Max(PositionMs - FrameMs, 0));
+            // Покадрово: не накапливаем слишком много кадров подряд — максимум ±5.
+            var count = Math.Clamp(steps, -5, 5);
+            if (count > 0)
+            {
+                for (var i = 0; i < count; i++)
+                    _playback.NextFrame();
+            }
+            else
+            {
+                _playback.Pause();
+                for (var i = 0; i < -count; i++)
+                    SeekTo(Math.Max(PositionMs - FrameMs, 0), isDrag: false);
+            }
         }
         else
         {
-            SeekTo(Math.Max(PositionMs - StepMs, 0));
+            var target = Math.Clamp(PositionMs + steps * StepMs, 0, LengthMs);
+            SeekTo(target, isDrag: false);
         }
     }
 
@@ -284,16 +337,47 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         ApplyRate(Rates[idx], flashBadge: true);
     }
 
+
     /// <summary>Перемотка на позицию в миллисекундах (вызывается из таймлайна).</summary>
-    public void SeekTo(double ms)
+    /// <param name="ms">Целевая позиция в миллисекундах.</param>
+    /// <param name="isDrag">True при drag таймлайна. В этом случае не обновляем
+    /// <see cref="PositionMs"/> принудительно — ползунок уже стоит у пользователя,
+    /// а актуальная позиция придёт через <see cref="OnTimeChanged"/>. Это предотвращает
+    /// скачок ползунка, когда fast-seek приземляется на ближайший keyframe.</param>
+    public void SeekTo(double ms, bool isDrag = false)
     {
         var clamped = Math.Clamp(ms, 0, Math.Max(0, LengthMs));
+
+        // После EndReached плеер остановлен; простой SetTime + Play часто не
+        // возобновляет воспроизведение корректно (TogglePause перестаёт работать).
+        // Перезагружаем дорожку с :start-time на нужной позиции — единственный
+        // надёжный способ выйти из состояния конца видео и продолжить с середины.
+        if (IsEnded && clamped < LengthMs)
+        {
+            IsEnded = false;
+            IsBuffering = true;
+            _pendingRate = Rate;
+            _pauseAfterStart = true; // после reload оставляем на паузе
+            _playback.StopAndRelease();
+            LoadAndPlayDeferred((long)clamped);
+            return;
+        }
+
         _playback.Time = (long)clamped;
-        PositionMs = clamped;
+
+        if (!isDrag)
+        {
+            PositionMs = clamped;
+            // Блокируем устаревшие TimeChanged, которые иначе перезаписывали бы PositionMs
+            // обратно на старую позицию и создавали эффект "возврата назад" при быстром
+            // клавиатурном seek'е.
+            _seekCooldown.Stop();
+            _seekCooldown.Start();
+            _seekCooldownActive = true;
+        }
         // Позицию не сохраняем здесь: каждый seek/shuttle-шаг иначе запускал бы
         // debounce-запись на диск и микро-задержки. Сохранение происходит при паузе,
         // остановке, завершении видео и при выходе из viewer (Dispose).
-        if (IsEnded && clamped < LengthMs) IsEnded = false;
     }
 
     // --- Аудиодорожки, субтитры, снимок кадра ---
@@ -437,6 +521,14 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         RateText = FormatRate(_pendingRate);
         _playback.Volume = Volume;
         _playback.Mute = IsMuted;
+
+        // Если seek произошёл из состояния EndReached — пользователь ожидает, что видео
+        // останется на паузе на выбранной позиции, а не сразу начнёт играть.
+        if (_pauseAfterStart)
+        {
+            _pauseAfterStart = false;
+            _playback.Pause();
+        }
     });
 
     private void OnPaused(object? sender, EventArgs e) => OnUi(() => { if (_disposed) return; IsPlaying = false; SavePosition(); });
@@ -470,7 +562,14 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         r.ToString("0.##", CultureInfo.CurrentCulture) + "×";
 
     private void OnTimeChanged(object? sender, MediaPlayerTimeChangedEventArgs e) =>
-        OnUi(() => { if (!_disposed) PositionMs = e.Time; });
+        OnUi(() =>
+        {
+            if (_disposed) return;
+            // Сразу после seek'а декодер может прислать TimeChanged с устаревшей позицией.
+            // Игнорируем его, пока не пройдёт cooldown — иначе PositionMs скачет назад.
+            if (_seekCooldownActive) return;
+            PositionMs = e.Time;
+        });
 
     private static void OnUi(Action action)
     {
@@ -503,6 +602,8 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         p.TimeChanged -= OnTimeChanged;
         p.LengthChanged -= OnLengthChanged;
 
+        _seekCooldown.Stop();
+        _stepThrottle.Stop();
         _playback.Dispose();
     }
 }

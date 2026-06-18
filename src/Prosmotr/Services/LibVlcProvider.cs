@@ -31,7 +31,8 @@ public sealed class LibVlcProvider : IDisposable
         "--quiet",
         "--no-plugins-scan",
         "--file-caching=1000",
-        "--network-caching=1000"
+        "--network-caching=1000",
+        "--input-fast-seek" // уменьшает артефакты при перемотке: seek к ближайшему keyframe
     };
 
     public LibVLC LibVlc
