@@ -7,7 +7,7 @@
                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
                  mc:Ignorable="d"
                  d:DataContext="{d:DesignInstance vm:SettingsViewModel}"
-                 Title="Настройки" Width="580" Height="680"
+                 Title="Настройки" Width="580" Height="720"
                  Icon="pack://application:,,,/Resources/Icons/app.ico"
                  WindowStartupLocation="CenterOwner"
                  ExtendsContentIntoTitleBar="True"
@@ -36,11 +36,12 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <ui:TitleBar Grid.Row="0" Title="Настройки" />
 
-        <ScrollViewer Grid.Row="1" Padding="20,0,20,20" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Row="1" Padding="20,0,20,8" VerticalScrollBarVisibility="Auto">
             <StackPanel>
 
                 <!-- ВИДЕО -->
@@ -363,5 +364,15 @@
 
             </StackPanel>
         </ScrollViewer>
+
+        <!-- Нижняя панель с кнопкой закрытия — запасной путь на случай бага WPF-UI TitleBar,
+             когда кнопка × в заголовке модального окна не реагирует на мышь. -->
+        <Border Grid.Row="2" Padding="20,8,20,16"
+                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <ui:Button Content="Закрыть" MinWidth="92" Appearance="Primary" Click="OnCloseClick" />
+            </StackPanel>
+        </Border>
     </Grid>
 </ui:FluentWindow>
