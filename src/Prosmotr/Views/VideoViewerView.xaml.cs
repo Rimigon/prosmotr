@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,6 +22,8 @@ public partial class VideoViewerView : UserControl
     private double _pendingSeekMs;
     private bool _hasPendingSeek;
     private bool _controlsShown = true;
+    private DateTime _suppressMouseMoveUntil = DateTime.MinValue;
+    private Point _lastMousePosition;
     private MainViewModel? _mainVm;
     private ContextMenu? _audioMenu;
     private ContextMenu? _subtitleMenu;
@@ -55,7 +58,7 @@ public partial class VideoViewerView : UserControl
         Unloaded += OnUnloaded;
         DataContextChanged += OnDataContextChanged;
 
-        Overlay.MouseMove += (_, _) => ShowControls();
+        Overlay.MouseMove += OnOverlayMouseMove;
         ClickArea.MouseLeftButtonDown += OnClickAreaDown;
         PositionSlider.ValueChanged += OnSliderValueChanged;
         // Начало/конец перетаскивания «бегунка» слайдера (routed-события Thumb всплывают к Slider).
@@ -73,7 +76,21 @@ public partial class VideoViewerView : UserControl
         WeakReferenceMessenger.Default.Register<VideoViewerView, ToggleChromeMessage>(this, static (r, _) => r.OnToggleChrome());
     }
 
-    private MainViewModel? MainVm => Window.GetWindow(this)?.DataContext as MainViewModel;
+    private MainViewModel? MainVm => ResolveMainVm();
+
+    /// <summary>
+    /// Найти MainViewModel, к которому привязано это View. Window.GetWindow(this) может вернуть
+    /// ForegroundWindow LibVLCSharp.WPF (у него нет DataContext), поэтому есть fallback на
+    /// Application.Current.MainWindow — в этом приложении оно всегда главное окно.
+    /// </summary>
+    private MainViewModel? ResolveMainVm()
+    {
+        if (Window.GetWindow(this)?.DataContext is MainViewModel mainVm)
+            return mainVm;
+        if (Application.Current?.MainWindow?.DataContext is MainViewModel fallbackVm)
+            return fallbackVm;
+        return null;
+    }
 
     // ContentControl переиспользует этот View при переходе видео→видео (тот же тип VM):
     // привязываем новый плеер и запускаем здесь, иначе остаётся старый (пустой кадр).
@@ -84,6 +101,9 @@ public partial class VideoViewerView : UserControl
         {
             _vm = vm;
             vm.PropertyChanged += OnVmPropertyChanged;
+            // Перепривязываем _mainVm ДО запуска плеера, чтобы восстановление видимости
+            // панели могло опираться на актуальное ChromeVisible главного окна.
+            AttachMainVm(ResolveMainVm());
             UpdateCover(); // сначала поднимаем чёрный cover
             if (IsLoaded)
             {
@@ -93,13 +113,17 @@ public partial class VideoViewerView : UserControl
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     Video.MediaPlayer = vm.Player;
-                    ShowControls();
+                    RestoreControls(); // сохраняем состояние элементов управления при переходе
                     vm.Start();
                     FocusHostWindow();
                 }), DispatcherPriority.Render);
             }
-            // Перепривязываем _mainVm на случай, если окно/VM сменились (идемпотентно).
-            AttachMainVm(Window.GetWindow(this)?.DataContext as MainViewModel);
+            else
+            {
+                // Новый View ещё не в дереве — ResolveMainVm вернёт null.
+                // Состояние панели восстановим в OnLoaded, когда окно уже доступно.
+                // noop: mainVm будет доступен в OnLoaded.
+            }
             UpdateCloneButton();
         }
     }
@@ -107,19 +131,18 @@ public partial class VideoViewerView : UserControl
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (_vm == null) return;
+        // Идемпотентная привязка: при reuse-сценарии OnDataContextChanged мог уже подписать
+        // тот же _mainVm — без этого было два += против одного -= (утечка View через singleton).
+        AttachMainVm(ResolveMainVm());
         UpdateCover(); // cover вверх до старта, чтобы не мелькал белый фон нативного HWND
         // Отрисовываем cover перед сменой Media/Play: сначала Render, потом уже плеер.
         Dispatcher.BeginInvoke(new Action(() =>
         {
             Video.MediaPlayer = _vm.Player;
-            ShowControls();
+            RestoreControls(); // не показываем панель, если она была скрыта до переключения
             _vm.Start();
         }), DispatcherPriority.Render);
         Dispatcher.BeginInvoke(new Action(FocusHostWindow), DispatcherPriority.Loaded);
-        // Идемпотентная привязка: при reuse-сценарии OnDataContextChanged мог уже подписать
-        // тот же _mainVm — без этого было два += против одного -= (утечка View через singleton).
-        AttachMainVm(Window.GetWindow(this)?.DataContext as MainViewModel);
-        AppLog.Write($"VideoViewerView.OnLoaded: _mainVm={_mainVm != null}");
         UpdateCloneButton();
     }
 
@@ -287,7 +310,10 @@ public partial class VideoViewerView : UserControl
         _pauseShowTimer.Stop();
         // Во время буферизации не возвращаем панель — иначе cover перестанет перекрывать
         // нижнюю часть и белый фон нативного HWND просветит через полупрозрачную панель.
-        if (_vm is { IsPlaying: false, IsEnded: false, IsBuffering: false }) ShowControls();
+        if (_vm is { IsPlaying: false, IsEnded: false, IsBuffering: false })
+        {
+            ShowControls();
+        }
     }
 
     private void OnSpeedButtonClick(object sender, RoutedEventArgs e)
@@ -457,15 +483,56 @@ public partial class VideoViewerView : UserControl
     private static void ToggleFullScreen() =>
         WeakReferenceMessenger.Default.Send(new ToggleFullScreenMessage());
 
+    private void OnOverlayMouseMove(object sender, MouseEventArgs e)
+    {
+        // При переключении фото→видео (или при удалении видео) Overlay сразу получает
+        // MouseMove от текущего положения курсора. Если панель была скрыта, это
+        // не должно её показывать — пользователь ещё не двинул мышью.
+        // Игнорируем движение, пока не истекло окно подавления и курсор не сдвинулся
+        // значительно от точки восстановления.
+        if (DateTime.Now < _suppressMouseMoveUntil)
+            return;
+
+        var pos = e.GetPosition(Overlay);
+        var delta = new Vector(pos.X - _lastMousePosition.X, pos.Y - _lastMousePosition.Y);
+        if (delta.Length < 4)
+            return;
+
+        _lastMousePosition = pos;
+        ShowControls();
+    }
+
     // --- Автоскрытие панели и курсора ---
 
     private void ShowControls()
     {
         _controlsShown = true;
         UpdateChromeVisibility();
+        SyncChromeVisible();
         _hideTimer.Stop();
         // Если автоскрытие отключено настройкой — таймер не запускаем, панель остаётся видимой.
         if (_vm == null || _vm.AutoHideControls)
+            _hideTimer.Start();
+    }
+
+    private void RestoreControls()
+    {
+        // При переключении между фото и видео панель должна оставаться в том же состоянии,
+        // в котором была раньше: если была скрыта — не появляться, если была видна — остаться видимой.
+        // Страховка: если _mainVm не привязался (airspace-окно LibVLC вместо MainWindow),
+        // повторно пытаемся найти MainViewModel прямо перед восстановлением.
+        if (_mainVm == null)
+            AttachMainVm(ResolveMainVm());
+
+        var chrome = _mainVm?.ChromeVisible ?? true;
+        _controlsShown = chrome;
+        // Запоминаем точку курсора и окно подавления, чтобы первый MouseMove
+        // после восстановления не вызвал ShowControls(), если мышь не двигалась.
+        _lastMousePosition = Mouse.GetPosition(Overlay);
+        _suppressMouseMoveUntil = DateTime.Now.AddMilliseconds(120);
+        UpdateChromeVisibility();
+        _hideTimer.Stop();
+        if (_controlsShown && _vm?.AutoHideControls == true)
             _hideTimer.Start();
     }
 
@@ -476,7 +543,20 @@ public partial class VideoViewerView : UserControl
         {
             _controlsShown = false;
             UpdateChromeVisibility();
+            SyncChromeVisible();
         }
+    }
+
+    /// <summary>
+    /// Поддерживает единое состояние видимости плавающих элементов между фото и видео:
+    /// VideoViewerView управляет своей панелью, но синхронизирует его с MainViewModel.ChromeVisible,
+    /// чтобы при переходе на фото панель/стрелки/курсор оставались в том же состоянии.
+    /// </summary>
+    private void SyncChromeVisible()
+    {
+        if (_mainVm == null) return;
+        if (_mainVm.ChromeVisible != _controlsShown)
+            _mainVm.ChromeVisible = _controlsShown;
     }
 
     /// <summary>
@@ -521,6 +601,7 @@ public partial class VideoViewerView : UserControl
             _controlsShown = false;
             UpdateChromeVisibility();
             _hideTimer.Stop();
+            SyncChromeVisible();
         }
         else
         {

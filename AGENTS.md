@@ -488,6 +488,11 @@ ICC-профилями. Magick нормализует/сбрасывает пр�
   `VideoViewerView` больше НЕ привязаны к `ShowFileNavigation` в XAML — их видимостью управляет
   code-behind (`UpdateSideNav`): показываются только когда панель видна (`_controlsShown`) И файлов >1.
   Прячутся по тому же `_hideTimer`, что и `ControlBar`.
+- **Видео и фото используют общее состояние ChromeVisible.** `VideoViewerView` синхронизирует
+  `_controlsShown` с `MainViewModel.ChromeVisible` при каждом показе/скрытии панели. При переключении
+  между фото и видео `RestoreControls()` берёт текущее `ChromeVisible`, поэтому элементы управления
+  остаются в том же состоянии (скрыты/видны), а не появляются заново. Скрытие по таймеру,
+  клавиша `ToggleChromeKey`, пауза и движение мыши обновляют это состояние и для видео, и для фото.
 - **Видео: курсор скрывается через `Overlay.Cursor` + `Window.Cursor`, а не `UserControl.Cursor`.**
   Из-за airspace-окна LibVLCSharp.WPF (отдельное нативное HWND за WPF-оверлеем) установка
   `Cursor = Cursors.None` на уровне `VideoViewerView` не гарантирует скрытие курсора над видео:
@@ -503,8 +508,10 @@ ICC-профилями. Magick нормализует/сбрасывает пр�
   **Важно:** внутри `VideoViewerView` нельзя биндиться через `RelativeSource AncestorType=Window`
   к свойствам `MainWindow`, потому что `LibVLCSharp.WPF` рендерит `VideoView.Content`
   в отдельном `ForegroundWindow` — `AncestorType=Window` найдёт уже это окно, а не `MainWindow`.
-  Поэтому текст и видимость инфо-плашки видео задаются из code-behind через `_mainVm`
-  (полученный через `Window.GetWindow(this)` **до** перемещения контента в `ForegroundWindow`).
+  Поэтому текст и видимость инфо-плашки видео задаются из code-behind через `_mainVm`.
+  Для его получения используется `Window.GetWindow(this)?.DataContext`; если airspace-окно
+  LibVLCSharp.WPF (ForegroundWindow) мешает, есть fallback на `Application.Current.MainWindow`
+  — в этом приложении оно всегда главное окно с `DataContext = MainViewModel`.
 - **Полноэкранный режим и airspace-окно видео.**
   После `ApplyFullScreen` (где размер/стиль окна меняются через Win32 API) вызывается
   `Dispatcher.BeginInvoke(UpdateLayout, DispatcherPriority.Render)`. Это нужно, чтобы
