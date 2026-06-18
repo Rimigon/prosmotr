@@ -251,7 +251,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="Клавиша закрытия программы" Style="{StaticResource RowLabel}" />
-                        <ComboBox Grid.Column="1" Width="120" ItemsSource="{Binding ExitKeys}"
+                        <ComboBox Grid.Column="1" Width="120" ItemsSource="{Binding ExitKeyItems}"
                                   SelectedItem="{Binding ExitKey, Mode=TwoWay}" />
                     </Grid>
                 </Border>
@@ -263,8 +263,20 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="Клавиша скрытия панели управления" Style="{StaticResource RowLabel}" />
-                        <ComboBox Grid.Column="1" Width="120" ItemsSource="{Binding ExitKeys}"
+                        <ComboBox Grid.Column="1" Width="120" ItemsSource="{Binding ChromeKeyItems}"
                                   SelectedItem="{Binding ToggleChromeKey, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Клавиша полноэкранного режима" Style="{StaticResource RowLabel}" />
+                        <ComboBox Grid.Column="1" Width="120" ItemsSource="{Binding FullScreenKeyItems}"
+                                  SelectedItem="{Binding FullScreenKey, Mode=TwoWay}" />
                     </Grid>
                 </Border>
 

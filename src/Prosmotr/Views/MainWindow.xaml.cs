@@ -277,6 +277,12 @@ public partial class MainWindow : FluentWindow
             return true;
         }
 
+        if (Enum.TryParse<Key>(_settings.Settings.FullScreenKey, out var fullScreenKey) && key == fullScreenKey)
+        {
+            _vm.ToggleFullScreenCommand.Execute(null);
+            return true;
+        }
+
         switch (key)
         {
             case Key.Left:

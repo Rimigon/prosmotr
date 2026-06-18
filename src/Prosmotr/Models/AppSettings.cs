@@ -61,6 +61,8 @@ public sealed class AppSettings
     public string ExitKey { get; set; } = "End";
     /// <summary>Клавиша для скрытия/показа элементов управления (название из System.Windows.Input.Key).</summary>
     public string ToggleChromeKey { get; set; } = "PageDown";
+    /// <summary>Клавиша для переключения полноэкранного режима (название из System.Windows.Input.Key).</summary>
+    public string FullScreenKey { get; set; } = "F11";
 
     // --- Интеграция с Windows ---
     /// <summary>Регистрировать ассоциации и контекстное меню при запуске.</summary>

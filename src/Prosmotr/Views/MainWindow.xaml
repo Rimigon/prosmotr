@@ -122,7 +122,7 @@
                     <ui:Button Appearance="Transparent" ToolTip="Удалить (Delete)" Command="{Binding DeleteCommand}">
                         <ui:Button.Icon><ui:SymbolIcon Symbol="Delete24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
                     </ui:Button>
-                    <ui:Button Appearance="Transparent" ToolTip="Полный экран (F)" Command="{Binding ToggleFullScreenCommand}">
+                    <ui:Button Appearance="Transparent" ToolTip="Полный экран (F11 / F)" Command="{Binding ToggleFullScreenCommand}">
                         <ui:Button.Icon><ui:SymbolIcon Symbol="FullScreenMaximize24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
                     </ui:Button>
                     <ui:Button Appearance="Transparent" ToolTip="Настройки" Command="{Binding OpenSettingsCommand}">

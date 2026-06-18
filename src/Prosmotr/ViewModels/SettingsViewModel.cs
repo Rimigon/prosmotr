@@ -33,9 +33,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
         "F", "F12", "M"
     };
 
-    // Клавиши, предлагаемые в выпадающих списках Exit/ToggleChrome. Не содержат F/F12/M —
-    // они жёстко заняты (полный экран / клон / mute).
-    public IReadOnlyList<string> ExitKeys { get; } = new[]
+    // Мастер-список клавиш, которые можно назначать на пользовательские действия.
+    // F, F12, M, Delete/Decimal и навигационные клавиши исключены — они жёстко зашиты в MainWindow.
+    private static readonly string[] AllConfigurableKeys = new[]
     {
         "PageDown", "PageUp", "End", "Home", "Insert",
         "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11",
@@ -43,6 +43,21 @@ public sealed partial class SettingsViewModel : ViewModelBase
         "A", "S", "D", "G", "H", "J", "K", "L",
         "Z", "X", "C", "V", "B", "N"
     };
+
+    /// <summary>Доступные клавиши для "Закрыть программу" — без уже занятых другими настройками.</summary>
+    public IReadOnlyList<string> ExitKeyItems => AllConfigurableKeys
+        .Where(k => k != FullScreenKey && k != ToggleChromeKey)
+        .ToList();
+
+    /// <summary>Доступные клавиши для "Скрыть/показать панель" — без уже занятых другими настройками.</summary>
+    public IReadOnlyList<string> ChromeKeyItems => AllConfigurableKeys
+        .Where(k => k != FullScreenKey && k != ExitKey)
+        .ToList();
+
+    /// <summary>Доступные клавиши для "Полный экран" — без уже занятых другими настройками.</summary>
+    public IReadOnlyList<string> FullScreenKeyItems => AllConfigurableKeys
+        .Where(k => k != ExitKey && k != ToggleChromeKey)
+        .ToList();
 
     [ObservableProperty] private AppTheme _theme_;
     [ObservableProperty] private float _defaultPlaybackRate;
@@ -65,6 +80,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private bool _isAssociationsRegistered;
     [ObservableProperty] private string _exitKey = "End";
     [ObservableProperty] private string _toggleChromeKey = "PageDown";
+    [ObservableProperty] private string _fullScreenKey = "F11";
 
     public SettingsViewModel(
         ISettingsService settings,
@@ -103,12 +119,31 @@ public sealed partial class SettingsViewModel : ViewModelBase
         IntegrateShell = s.IntegrateShell;
         ExitKey = IsAllowedKey(s.ExitKey) ? s.ExitKey : "End";
         ToggleChromeKey = IsAllowedKey(s.ToggleChromeKey) ? s.ToggleChromeKey : "PageDown";
+        FullScreenKey = IsAllowedKey(s.FullScreenKey) ? s.FullScreenKey : "F11";
+        ResolveKeyConflicts();
         IsAssociationsRegistered = _assoc.IsRegistered;
         _loading = false;
     }
 
     private static bool IsAllowedKey(string key)
         => !ConflictingKeys.Contains(key) && Enum.TryParse<System.Windows.Input.Key>(key, out _);
+
+    /// <summary>Защита от ручного редактирования settings.json: ни одна клавиша не может быть
+    /// назначена на два действия одновременно. Конфликтующая настройка сбрасывается к свободному
+    /// значению (дефолту, если он не занят, иначе — первой свободной клавише из списка).</summary>
+    private void ResolveKeyConflicts()
+    {
+        if (ExitKey == FullScreenKey || ToggleChromeKey == FullScreenKey)
+            FullScreenKey = FindFreeKey(new AppSettings().FullScreenKey, ExitKey, ToggleChromeKey) ?? "F11";
+        if (ExitKey == ToggleChromeKey)
+            ToggleChromeKey = FindFreeKey(new AppSettings().ToggleChromeKey, ExitKey, FullScreenKey) ?? "PageDown";
+    }
+
+    private static string? FindFreeKey(string preferred, string reserved1, string reserved2)
+    {
+        if (preferred != reserved1 && preferred != reserved2) return preferred;
+        return AllConfigurableKeys.FirstOrDefault(k => k != reserved1 && k != reserved2);
+    }
 
     private void Commit(bool immediate = false)
     {
@@ -134,6 +169,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         s.IntegrateShell = IntegrateShell;
         s.ExitKey = ExitKey;
         s.ToggleChromeKey = ToggleChromeKey;
+        s.FullScreenKey = FullScreenKey;
         if (immediate)
             _settings.Save(); // поднимет SettingsChanged → тема/раскладка применятся вживую
         else
@@ -161,8 +197,29 @@ public sealed partial class SettingsViewModel : ViewModelBase
     partial void OnFrameByFrameSeekChanged(bool value) => Commit();
     partial void OnArrowKeysSeekVideoChanged(bool value) => Commit();
     partial void OnMatchExplorerSortChanged(bool value) => Commit();
-    partial void OnExitKeyChanged(string value) => Commit();
-    partial void OnToggleChromeKeyChanged(string value) => Commit();
+    partial void OnExitKeyChanged(string value)
+    {
+        Commit();
+        OnPropertyChanged(nameof(ExitKeyItems));
+        OnPropertyChanged(nameof(ChromeKeyItems));
+        OnPropertyChanged(nameof(FullScreenKeyItems));
+    }
+
+    partial void OnToggleChromeKeyChanged(string value)
+    {
+        Commit();
+        OnPropertyChanged(nameof(ExitKeyItems));
+        OnPropertyChanged(nameof(ChromeKeyItems));
+        OnPropertyChanged(nameof(FullScreenKeyItems));
+    }
+
+    partial void OnFullScreenKeyChanged(string value)
+    {
+        Commit();
+        OnPropertyChanged(nameof(ExitKeyItems));
+        OnPropertyChanged(nameof(ChromeKeyItems));
+        OnPropertyChanged(nameof(FullScreenKeyItems));
+    }
 
     partial void OnIntegrateShellChanged(bool value)
     {
