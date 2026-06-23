@@ -1,4 +1,6 @@
 using CommunityToolkit.Mvvm.Input;
+using System.Windows;
+using System.Windows.Threading;
 using Prosmotr.Infrastructure;
 using Prosmotr.Models;
 using Prosmotr.Services.Abstractions;
@@ -50,6 +52,16 @@ public sealed partial class MainViewModel
                 await Task.Delay(250);
             }
 
+            ImageViewerViewModel? imageVm = null;
+            if (cur.IsAnimated && CurrentContent is ImageViewerViewModel ivm)
+            {
+                // XamlAnimatedGif держит FileStream открытым во время анимации.
+                // Освобождаем handle перед удалением, иначе IFileOperation не сможет
+                // переместить файл (aborted=True).
+                imageVm = ivm;
+                imageVm.RequestReleaseFileHandle();
+            }
+
             var result = await _deletion.DeleteAsync(cur.FullPath, permanent);
             if (result.Success)
             {
@@ -58,6 +70,19 @@ public sealed partial class MainViewModel
                 // файл стрелками/миниатюрой. Иначе удалили бы из списка не тот элемент, что с диска.
                 var index = _nav.IndexOf(cur);
                 if (index >= 0) _nav.RemoveAt(index);
+
+                // Dispose GIF ViewModel после RemoveAt, чтобы old Animator не пытался
+                // перезагрузить файл при переключении на следующий элемент.
+                if (imageVm != null)
+                {
+                    _pendingDisposal = imageVm;
+                    Application.Current?.Dispatcher.BeginInvoke(() =>
+                    {
+                        imageVm.Dispose();
+                        if (ReferenceEquals(_pendingDisposal, imageVm)) _pendingDisposal = null;
+                    }, DispatcherPriority.Render);
+                }
+
                 // Remove ПОСЛЕ RemoveAt: переключение на следующий файл (SwitchTo) или disposal
                 // старого плеера синхронно вызывает SavePosition для удаляемого файла, что
                 // воссоздало бы его resume-запись. Чистим её после.
@@ -84,6 +109,8 @@ public sealed partial class MainViewModel
             }
             else
             {
+                // Удаление не удалось — восстанавливаем анимацию GIF, если handle был освобождён.
+                imageVm?.RequestRestoreFileHandle();
                 _notify.Show(result.ErrorMessage ?? "Не удалось удалить файл.", NotificationKind.Error);
             }
         }

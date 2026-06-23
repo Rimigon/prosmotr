@@ -20,11 +20,13 @@ public partial class ImageViewerView : UserControl
         DataContextChanged += OnDataContextChanged;
         Unloaded += OnUnloaded;
 
-        // Отслеживаем реальное появление Source у Image, чтобы пересчитать зум
-        // даже в случаях, когда PropertyChanged VM пришёл до привязки обработчика
-        // (например, синхронный кэш-хит при смене фото в переиспользуемом View).
+        // Статичные фото: иногда PropertyChanged приходит до привязки обработчика,
+        // поэтому отслеживаем реальное появление Source у StaticImage.
+        // Для анимированных GIF используем событие Loaded от XamlAnimatedGif,
+        // т.к. DependencyPropertyDescriptor на Source анимированного GIF
+        // может давать множественные ложные срабатывания.
         AddSourceChangedHandler(StaticImage);
-        AddSourceChangedHandler(AnimatedImage);
+        AnimationBehavior.AddLoadedHandler(AnimatedImage, OnGifLoaded);
 
         // Контекстное меню по правому клику (поворот, масштаб, копирование, действия с файлом).
         ContextMenu = new ContextMenu();
@@ -46,6 +48,14 @@ public partial class ImageViewerView : UserControl
             // Ждём, пока binding и макет применятся, затем вписываем изображение.
             Dispatcher.BeginInvoke(() => Zoom.SetMode(ImageViewMode.Fit), DispatcherPriority.Render);
         }
+    }
+
+    private void OnGifLoaded(object? sender, RoutedEventArgs e)
+    {
+        // XamlAnimatedGif закончил декодирование и установил Image.Source.
+        // Показываем GIF сразу, не дожидаясь дополнительных уведомлений.
+        if (sender is Image { Source: not null })
+            Dispatcher.BeginInvoke(() => Zoom.SetMode(ImageViewMode.Fit), DispatcherPriority.Render);
     }
 
     private MainViewModel? MainVm => Window.GetWindow(this)?.DataContext as MainViewModel;
@@ -104,6 +114,17 @@ public partial class ImageViewerView : UserControl
             vm.ZoomInRequested += OnZoomIn;
             vm.ZoomOutRequested += OnZoomOut;
             vm.ViewModeRequested += OnViewMode;
+            vm.ReleaseFileHandleRequested += OnReleaseFileHandleRequested;
+            vm.RestoreFileHandleRequested += OnRestoreFileHandleRequested;
+
+            // XamlAnimatedGif плохо перезагружает анимацию при переиспользовании View,
+            // если SourceUri задаётся только через attached-property binding в XAML.
+            // Явно сбрасываем и устанавливаем SourceUri из code-behind.
+            if (vm.IsAnimated)
+            {
+                AnimationBehavior.SetSourceUri(AnimatedImage, null);
+                AnimationBehavior.SetSourceUri(AnimatedImage, vm.AnimatedSource);
+            }
 
             // Немедленно скрываем содержимое, чтобы старое фото не мелькало
             // со старым масштабом до смены источника. Пересчёт зума откладываем
@@ -131,9 +152,29 @@ public partial class ImageViewerView : UserControl
         _vm.ZoomInRequested -= OnZoomIn;
         _vm.ZoomOutRequested -= OnZoomOut;
         _vm.ViewModeRequested -= OnViewMode;
+        _vm.ReleaseFileHandleRequested -= OnReleaseFileHandleRequested;
+        _vm.RestoreFileHandleRequested -= OnRestoreFileHandleRequested;
         // Останавливаем анимацию GIF, чтобы декодер освободил ресурсы (issue: переход GIF→JPG).
         AnimationBehavior.SetSourceUri(AnimatedImage, null);
+        AnimatedImage.Source = null;
         _vm = null;
+    }
+
+    /// <summary>XamlAnimatedGif держит FileStream открытым во время анимации.
+    /// Перед удалением файла сбрасываем SourceUri, чтобы освободить handle.
+    /// Также сбрасываем Image.Source, чтобы Animator.Dispose отработал синхронно.</summary>
+    private void OnReleaseFileHandleRequested(object? sender, EventArgs e)
+    {
+        AnimationBehavior.SetSourceUri(AnimatedImage, null);
+        AnimatedImage.Source = null;
+    }
+
+    /// <summary>Если удаление не удалось, восстанавливаем SourceUri,
+    /// чтобы XamlAnimatedGif снова загрузил GIF.</summary>
+    private void OnRestoreFileHandleRequested(object? sender, EventArgs e)
+    {
+        if (_vm is null) return;
+        AnimationBehavior.SetSourceUri(AnimatedImage, _vm.AnimatedSource);
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)

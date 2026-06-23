@@ -84,17 +84,22 @@ public sealed class FileDeletionService : IFileDeletionService
 
             AppLog.Write($"[FileDeletionService] IFileOperation TIMEOUT ({timeoutSec}s): {path} — STA thread stuck, abandoning");
 
-            // Пытаемся дождаться завершения потока, чтобы не оставлять зомби.
-            if (!thread.Join(TimeSpan.FromSeconds(15)))
-            {
-                try { thread.Interrupt(); } catch { }
-            }
-
             return new DeleteResult(false, $"Таймаут операции ({timeoutSec} с).");
         }
         finally
         {
             _sem.Release();
+            // Пытаемся дождаться завершения потока, чтобы не оставлять зомби.
+            // Делаем это после Release, чтобы не блокировать семафор, если Join зависнет.
+            if (thread != null)
+            {
+                try
+                {
+                    if (!thread.Join(TimeSpan.FromSeconds(5)))
+                        AppLog.Write($"[FileDeletionService] STA thread did not exit in 5s: {path}");
+                }
+                catch { }
+            }
         }
     }
 

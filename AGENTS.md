@@ -63,9 +63,11 @@ dotnet test tests\Prosmotr.Tests\Prosmotr.Tests.csproj
 - `dotnet build`/`dotnet run` собирают в `bin\Debug\...` или `bin\Release\...` —
   **ярлык их не видит**.
 - **Если правки нужно увидеть в приложении, запускаемом ярлыком, — переопубликуй в `app\`:**
+
   ```powershell
   dotnet publish src\Prosmotr\Prosmotr.csproj -c Release -o app
   ```
+
   (предварительно закрой запущенные экземпляры — иначе `Prosmotr.exe`/`.dll` заблокированы).
 - Скомпилированный XAML (BAML) лежит внутри `Prosmotr.dll`, поэтому правки в `.xaml` тоже требуют
   переиздания/пересборки, а не только копирования ресурсов.
@@ -79,25 +81,34 @@ WPF + LibVLC агрессивно кэшируют нативные сборки
 изменения в коде/XAML точно попали в запускаемое приложение и не «прилипали» старые версии:
 
 1. **Закрой все процессы `Prosmotr.exe`** (включая зависшие/фоновые):  
+
    ```powershell
    Get-Process -Name "Prosmotr" -ErrorAction SilentlyContinue | Stop-Process -Force
    ```
+
 2. **Полностью очисти папку `app\`** (то, что видит ярлык):  
+
    ```powershell
    Remove-Item -Path "app" -Recurse -Force -ErrorAction SilentlyContinue
    ```
+
 3. **Очисти кэш сборки** (`bin`/`obj`), чтобы не осталось stale BAML/ресурсов:  
+
    ```powershell
    Remove-Item -Path "src\Prosmotr\bin","src\Prosmotr\obj" -Recurse -Force -ErrorAction SilentlyContinue
    Remove-Item -Path "tests\Prosmotr.Tests\bin","tests\Prosmotr.Tests\obj" -Recurse -Force -ErrorAction SilentlyContinue
    ```
+
 4. **Очисти временные файлы приложения в `%TEMP%`** (заблокированные DLL/lock-файлы .NET):  
+
    ```powershell
    Remove-Item -Path "$env:TEMP\Prosmotr*" -Recurse -Force -ErrorAction SilentlyContinue
    Remove-Item -Path "$env:TEMP\\.NET*" -Recurse -Force -ErrorAction SilentlyContinue
    ```
+
 5. Сразу после очистки пересобери и переопубликуй в `app\` (иначе кэш/lock-файлы могут
    восстановиться при промежуточных действиях):  
+
    ```powershell
    dotnet publish src\Prosmotr\Prosmotr.csproj -c Release -o app
    ```
@@ -117,12 +128,21 @@ Single-file ломает загрузку нативных плагинов LibV
 Нативные плагины LibVLC грузятся из `libvlc\win-x64`. Процесс обязан быть 64-битным
 (`PlatformTarget=x64`, `Prefer32Bit=false`). Не переключай на x86/AnyCPU-32.
 
-### 3.5. Single-instance + передача пути через named pipe
+### 3.5. Single-instance на уровне папки
 
-В `App.xaml.cs`: при запуске берётся `Mutex` (`Prosmotr.SingleInstance.v1`). Если экземпляр уже
-запущен — новый процесс отправляет путь работающему через named pipe (`Prosmotr.OpenFile.v1`) и
-сразу завершается. Поэтому второй запуск с файлом открывает файл **в уже открытом окне**, а не
-создаёт новое. При отладке single-instance это сбивает с толку — закрывай прежний экземпляр.
+В `App.xaml.cs`: при запуске вычисляется папка открываемого пути (для файла — его каталог,
+для папки — она сама). На каждую папку создаётся свой `Mutex` (`Prosmotr.SingleInstance.<hash>`)
+и named pipe (`Prosmotr.OpenFile.<hash>`). Если для этой папки уже запущен экземпляр —
+новый процесс отправляет путь работающему через pipe и завершается. Если папка новая —
+открывается **новое окно**.
+
+Таким образом:
+
+- файлы из одной папки открываются в одном и том же окне;
+- файлы из разных папок открываются в разных окнах;
+- пустой запуск (без аргументов) использует отдельный мьютекс `empty`, пока не откроет первую папку.
+
+При отладке закрывай все экземпляры, если хочешь сбросить привязку к папке.
 
 ---
 
@@ -263,6 +283,7 @@ View висит на `DataContextChanged`, а не только на `Loaded` (�
 перетаскивания «бегунка». Если на каждое такое событие сразу звать `VideoViewerViewModel.SeekTo`
 (а он делает `Player.Time = …`), декодер VLC захлёбывается потоком seek'ов — видимые лаги и
 артефакты (кадры декодируются от ключевых и накладываются). Поэтому:
+
 - Перетаскивание ловим через routed-события `Thumb.DragStarted/DragCompleted` (всплывают к Slider),
   флаг `_isSeekDragging`.
 - Во время drag перемотки **дросселируются** таймером `_seekThrottle` (~120 мс): копим последнюю
@@ -295,6 +316,7 @@ View висит на `DataContextChanged`, а не только на `Loaded` (�
 Решение — чёрный `Border x:Name="SwitchCover"` в оверлее (`Grid.Row="0"`, `Grid.RowSpan="2"`,
 позже всех элементов, кроме `ToastView`): оверлей едет в `ForegroundWindow`, который всегда
 поверх нативного HWND, поэтому opaque-чёрный cover гарантированно перекрывает белый.
+
 - `VideoViewerViewModel.IsBuffering` (`[ObservableProperty]`): `true` в конструкторе (свежий
   VM вот-вот грузит), в `BeginPlayback` (старт/`SwitchTo`, в самом начале) и в `Replay`;
   `false` в `OnPlaying` (первый кадр готов — с `:start-paused` он отрисован до события `Playing`),
@@ -336,6 +358,25 @@ View висит на `DataContextChanged`, а не только на `Loaded` (�
 ICC-профилями. Magick нормализует/сбрасывает проблемные профили перед отдачей WPF.
 Анимированные GIF рисует **не** этот сервис, а XamlAnimatedGif прямо во View
 (`AnimationBehavior.SourceUri`).
+
+- **Удаление GIF требует освобождения handle.** XamlAnimatedGif держит `FileStream` файла
+  открытым во время анимации, поэтому `IFileOperation` не может переместить GIF в Корзину
+  (`aborted=True`). Перед удалением `MainViewModel.Delete` через
+  `ImageViewerViewModel.RequestReleaseFileHandle()` сбрасывает `SourceUri` на `null`;
+  при неудачном удалении `RequestRestoreFileHandle()` восстанавливает binding.
+- **Показ GIF — через событие `Loaded` XamlAnimatedGif + явный `SetSourceUri`.**
+  `DependencyPropertyDescriptor` на `Image.Source` анимированного GIF давал
+  множественные/задержанные уведомления, из-за чего GIF оставалась невидимой
+  после готовности первого кадра. Кроме того, attached-property binding
+  `AnimationBehavior.SourceUri` в XAML плохо перезагружается при переиспользовании
+  `ImageViewerView` (ContentControl меняет только DataContext), поэтому второй и
+  последующие GIF открывались в чёрный экран. В `ImageViewerView`:
+  - `SourceUri` задаётся явно из code-behind в `OnDataContextChanged`
+    (`SetSourceUri(null)`, затем `SetSourceUri(vm.AnimatedSource)`);
+  - подписка на `AnimationBehavior.LoadedEvent` вызывает `Zoom.SetMode` при
+    готовности первого кадра;
+  - при отсоединении VM `SourceUri` сбрасывается, а `AnimatedImage.Source = null`
+    завершает Animator синхронно.
 
 `ImageCache` — LRU полноразмерных изображений (`Capacity = 24`; раньше 7) для мгновенного
 переключения между соседними фото (`Preload` соседей). Полный размер = `decodePixelWidth=0`.
@@ -423,12 +464,14 @@ ICC-профилями. Magick нормализует/сбрасывает пр�
 симптом: Delete / громкость (↑↓) / перемотка (←→) «не работают, пока не кликнешь по видео».
 
 Поэтому горячие клавиши в `MainWindow` ловятся **двумя путями** (оба зовут единый `TryHandleHotkey`):
+
 - `PreviewKeyDown` — когда фокус у элемента WPF;
 - `ComponentDispatcher.ThreadPreprocessMessage` — перехват `WM_KEYDOWN` на уровне потока, работает
   даже когда фокус у нативного окна VLC. Если клавиша обработана — ставим `handled = true`
   (тогда сообщение не доходит до `DispatchMessage`, двойной обработки с `PreviewKeyDown` нет).
 
 Нюансы, которые легко сломать:
+
 - **Модальные диалоги.** `ThreadPreprocessMessage` — потоковое событие и срабатывает в т.ч. при
   открытом `ShowDialog` (настройки/свойства). Флаг `_suspendHotkeys` (ставится вокруг `ShowDialog`
   в `OpenSettings`/`OpenProperties`) глушит хоткеи, иначе Delete/F и т.п. сработают поверх диалога.
@@ -452,7 +495,7 @@ ICC-профилями. Magick нормализует/сбрасывает пр�
   (`AppSettings`), по умолчанию `F11`. Обрабатывается в `MainWindow.TryHandleHotkey`;
   клавиша `F` оставлена как жёстко зашитый запасной вариант. Настройка изменяется
   в окне настроек; выпадающие списки фильтруют уже занятые другими действиями клавиши.
-    - **Стрелки ←/→ и видео в обычном режиме.** По умолчанию `Left`/`Right` переключают файлы,
+  - **Стрелки ←/→ и видео в обычном режиме.** По умолчанию `Left`/`Right` переключают файлы,
       а перемотка видео работает только в полноэкранном режиме. Настройка `ArrowKeysSeekVideo`
       (`AppSettings`, тумблер в разделе «Видео») меняет поведение: при открытом видео стрелки
       всегда вызывают `StepBackward`/`StepForward` (с учётом `FrameByFrameSeek` и `SeekStepSeconds`),
@@ -489,7 +532,7 @@ ICC-профилями. Magick нормализует/сбрасывает пр�
     отключить resize-границы, потому что `TitleBar` из WPF-UI вешает собственный `HwndSourceHook`
     для `WM_NCHITTEST`, и простое изменение `WindowChrome` / `ResizeMode` не останавливает его.
   - `DwmExtendFrameIntoClientArea` с нулевыми margins + `DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE`
-    + `DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_DONOTROUND` — убирают белые полосы DWM в Windows 11.
+    - `DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_DONOTROUND` — убирают белые полосы DWM в Windows 11.
   - `WindowStyle` и `ResizeMode` через WPF **не меняются** (иначе `FluentWindow` в
     `OnExtendsContentIntoTitleBarChanged` принудительно сбросит `WindowStyle` обратно
     в `SingleBorderWindow` и рамка вернётся).
@@ -651,11 +694,13 @@ ICC-профилями. Magick нормализует/сбрасывает пр�
 ### 5.16. Дублирование экрана (Display Topology / Clone Mode)
 
 Функция переключения Windows в системный clone-режим («Дублировать эти экраны») через CCD API:
+
 - **API:** `QueryDisplayConfig` / `SetDisplayConfig` (P/Invoke в `Infrastructure/DisplayConfigApi.cs`).
 - **Сервис:** `DisplayTopologyService` (singleton), реализует `IDisplayTopologyService`.
 - **UI:** кнопка в нижней панели фото (`ImageViewerView`) и в оверлее видео (`VideoViewerView`), горячая клавиша `F12`.
 
 **Критичные нюансы:**
+
 - **Это системный clone mode, не «окно приложения».** `SDC_TOPOLOGY_CLONE` клонирует **весь desktop** (панель задач, окна, всё). Это то же самое, что Win+P → «Дублировать». Экраны **мигают/темнеют на 1–2 секунды** при переключении — это неизбежное поведение драйвера.
 - **HRESULT проверяется через `hr != 0`, а НЕ `hr < 0`.** `SetDisplayConfig`/`QueryDisplayConfig` возвращают обычные Win32 error codes: `0` = успех, **положительное число** = ошибка (`ERROR_BAD_CONFIGURATION = 1610`, `ERROR_INSUFFICIENT_BUFFER = 122`, `ERROR_INVALID_PARAMETER = 87` и т.д.). Проверка `hr < 0` никогда не ловит ошибки.
 - **`QueryDisplayConfig` P/Invoke — массивы должны быть `[Out]`.** Без `[Out]` marshaller может не записывать данные в managed массивы, и `QueryDisplayConfig` возвращает пустые структуры (все поля = 0), хотя HRESULT = 0. Исправлено: `[In, Out]` → `[Out]` для `pathArray` и `modeInfoArray`.
@@ -697,6 +742,7 @@ ICC-профилями. Magick нормализует/сбрасывает пр�
    Скрипт `publish.ps1` также делает локальную резервную копию `plugins.dat` на время очистки.
 
 **Что НЕ поможет (не делать):**
+
 - `PublishSingleFile` — **запрещён**, ломает загрузку нативных плагинов LibVLC.
 - Self-contained publish — увеличивает размер и не ускоряет старт.
 - Trimming (ILLink) — несовместим с WPF-рефлексией и XAML.
@@ -830,6 +876,7 @@ ICC-профилями. Magick нормализует/сбрасывает пр�
 ### 5.21. Юнит-тесты (P4) — `tests/Prosmotr.Tests`
 
 Появился первый тестовый проект (раньше тестов не было). **Что важно знать:**
+
 - **Только чистая логика, без UI/нативов.** Тесты НЕ грузят LibVLC/Magick и НЕ создают WPF
   `Application` — поэтому быстрые и headless. Покрыты: `NavigationService` (индексы при
   remove/insert, циклическая навигация, `ReorderPreservingCurrent`), `MediaLibraryService.Sort`
@@ -1115,9 +1162,11 @@ Magick.NET с нормализацией ICC-профилей (см. §5.5).
 1. Закрой запущенные экземпляры: `Get-Process Prosmotr | Stop-Process -Force`.
 2. **Обязательно переопубликуй в `app\`** — без этого изменения не увидит ни ярлык, ни пользователь
    (XAML тоже компилируется в `Prosmotr.dll`, поэтому одной пересборки `bin\` мало):
+
    ```powershell
    dotnet publish src\Prosmotr\Prosmotr.csproj -c Release -o app
    ```
+
 3. Запусти `app\Prosmotr.exe` (опц. с путём к медиафайлу как аргументом).
 4. Сделай скриншот окна. Окно может быть перекрыто другими — надёжнее `PrintWindow` (флаг
    `PW_RENDERFULLCONTENT = 2`) по `MainWindowHandle`, чем `CopyFromScreen`.

@@ -28,7 +28,6 @@
                 </Image>
 
                 <Image x:Name="AnimatedImage" Stretch="None"
-                       gif:AnimationBehavior.SourceUri="{Binding AnimatedSource}"
                        gif:AnimationBehavior.RepeatBehavior="Forever"
                        Visibility="{Binding IsAnimated, Converter={StaticResource BoolToVis}}" />
             </Canvas>

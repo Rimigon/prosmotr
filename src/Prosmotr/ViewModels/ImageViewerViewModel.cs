@@ -52,6 +52,16 @@ public sealed partial class ImageViewerViewModel : ViewModelBase, IDisposable
         _notify = notify;
     }
 
+    /// <summary>Запрос на освобождение файлового handle (например, перед удалением GIF).
+    /// XamlAnimatedGif держит FileStream открытым во время показа анимации.</summary>
+    public event EventHandler? ReleaseFileHandleRequested;
+
+    /// <summary>Запрос на восстановление файлового handle после неудачного удаления.</summary>
+    public event EventHandler? RestoreFileHandleRequested;
+
+    public void RequestReleaseFileHandle() => ReleaseFileHandleRequested?.Invoke(this, EventArgs.Empty);
+    public void RequestRestoreFileHandle() => RestoreFileHandleRequested?.Invoke(this, EventArgs.Empty);
+
     public bool CanCopyImage => !IsAnimated && Image is BitmapSource;
 
     [RelayCommand(CanExecute = nameof(CanCopyImage))]

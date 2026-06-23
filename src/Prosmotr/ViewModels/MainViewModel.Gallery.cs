@@ -38,6 +38,8 @@ public sealed partial class MainViewModel
         _openCts = new CancellationTokenSource();
         var ct = _openCts.Token;
 
+        var previousFolderKey = _currentFolderKey;
+
         try
         {
             MediaLibraryResult result;
@@ -69,6 +71,11 @@ public sealed partial class MainViewModel
             }
 
             if (ct.IsCancellationRequested) return;
+
+            // Сменили папку — сообщаем App, чтобы он переключил single-instance привязку
+            // на эту папку. Тогда следующие файлы из неё будут открываться в этом же окне.
+            if (_currentFolderKey != previousFolderKey)
+                FolderChanged?.Invoke(_currentFolderKey!);
 
             if (result.Items.Count == 0)
             {

@@ -18,13 +18,12 @@ namespace Prosmotr;
 /// <summary>Точка входа: настройка DI-контейнера, создание главного окна, применение темы.</summary>
 public partial class App : Application
 {
-    private const string MutexName = "Prosmotr.SingleInstance.v1";
-    private const string PipeName = "Prosmotr.OpenFile.v1";
-
     private IHost? _host;
     private Mutex? _mutex;
     private bool _ownsMutex;
+    private string _folderKey = "empty";
     private readonly CancellationTokenSource _appCts = new();
+    private CancellationTokenSource _pipeCts = new();
 
     public IServiceProvider Services => _host!.Services;
 
@@ -41,16 +40,20 @@ public partial class App : Application
 
         base.OnStartup(e);
 
-        // Single-instance: если приложение уже запущено — передаём путь ему и выходим.
-        _mutex = new Mutex(true, MutexName, out bool isFirstInstance);
-        _ownsMutex = isFirstInstance;
-        if (!isFirstInstance)
+        // Single-instance на уровне папки: одно окно на одну папку с медиафайлами.
+        // Если для этой папки уже есть процесс — отправляем путь ему и выходим.
+        var folderKey = GetFolderKey(ExtractPath(e.Args));
+        _mutex = CreateOwnedMutex(MutexNameForKey(folderKey), out _ownsMutex);
+        if (!_ownsMutex)
         {
-            SendArgsToRunningInstance(e.Args);
+            _mutex?.Dispose();
+            _mutex = null;
+            SendArgsToRunningInstance(folderKey, e.Args);
             Shutdown();
             return;
         }
-        StartPipeServer();
+        _folderKey = folderKey;
+        StartPipeServerForFolder(folderKey);
 
         // Глобальная обработка непойманных исключений в UI-потоке.
         DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -91,6 +94,7 @@ public partial class App : Application
             theme.Apply(settings.Settings.Theme);
 
             var vm = Services.GetRequiredService<MainViewModel>();
+            vm.FolderChanged += OnMainViewFolderChanged;
 
             // LibVLC warmup: генерируем plugins.dat если отсутствует, и создаём LibVLC в фоне.
             // Без кэша libvlc_new() сканирует всю папку plugins\ — 3–8 с задержки.
@@ -136,31 +140,42 @@ public partial class App : Application
     private static string? ExtractPath(string[] args) =>
         args.FirstOrDefault(a => File.Exists(a) || Directory.Exists(a));
 
-    private static void SendArgsToRunningInstance(string[] args)
+    private static void SendArgsToRunningInstance(string folderKey, string[] args)
     {
         var path = ExtractPath(args);
-        if (string.IsNullOrEmpty(path)) return;
         try
         {
-            using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
-            client.Connect(2000);
+            using var client = new NamedPipeClientStream(".", PipeNameForKey(folderKey), PipeDirection.Out);
+            // Первый процесс мог только что создать мьютекс и ещё не запустить pipe-сервер
+            // (инициализация DI / LibVLC занимает время). Повторяем попытки подключения.
+            for (int i = 0; i < 10; i++)
+            {
+                try { client.Connect(250); break; }
+                catch (Exception) when (i < 9) { Thread.Sleep(100); }
+            }
             using var writer = new StreamWriter(client) { AutoFlush = true };
-            writer.WriteLine(path);
+            writer.WriteLine(path ?? string.Empty);
         }
         catch { /* не удалось — просто откроется новое окно в худшем случае */ }
     }
 
-    private void StartPipeServer()
+    private void StartPipeServerForFolder(string folderKey)
     {
+        _pipeCts.Cancel();
+        _pipeCts.Dispose();
+        _pipeCts = new CancellationTokenSource();
+        var ct = _pipeCts.Token;
+        var pipeName = PipeNameForKey(folderKey);
+
         Task.Run(async () =>
         {
-            while (!_appCts.IsCancellationRequested)
+            while (!ct.IsCancellationRequested)
             {
                 try
                 {
                     using var server = new NamedPipeServerStream(
-                        PipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-                    await server.WaitForConnectionAsync(_appCts.Token).ConfigureAwait(false);
+                        pipeName, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                    await server.WaitForConnectionAsync(ct).ConfigureAwait(false);
 
                     // Читаем ОГРАНИЧЕННЫЙ объём: путь Windows не длиннее ~32K символов.
                     // Без лимита локальный процесс мог бы слать гигабайты без '\n' и исчерпать
@@ -169,13 +184,13 @@ public partial class App : Application
                     var buffer = new byte[maxBytes];
                     int total = 0, read;
                     while (total < maxBytes &&
-                           (read = await server.ReadAsync(buffer.AsMemory(total, maxBytes - total), _appCts.Token).ConfigureAwait(false)) > 0)
+                           (read = await server.ReadAsync(buffer.AsMemory(total, maxBytes - total), ct).ConfigureAwait(false)) > 0)
                     {
                         total += read;
                         if (Array.IndexOf(buffer, (byte)'\n', 0, total) >= 0) break;
                     }
                     var path = System.Text.Encoding.UTF8.GetString(buffer, 0, total).Split('\n', '\r')[0];
-                    if (!string.IsNullOrEmpty(path) && !_appCts.IsCancellationRequested)
+                    if (!_appCts.IsCancellationRequested)
                         Dispatcher.Invoke(() => OnSecondInstance(path));
                 }
                 catch (OperationCanceledException) { break; }
@@ -192,7 +207,8 @@ public partial class App : Application
         try
         {
             var vm = Services.GetRequiredService<MainViewModel>();
-            _ = vm.OpenPathAsync(path);
+            if (!string.IsNullOrEmpty(path))
+                _ = vm.OpenPathAsync(path);
 
             if (MainWindow != null)
             {
@@ -208,6 +224,109 @@ public partial class App : Application
         {
             LogCrash("SecondInstance", ex);
         }
+    }
+
+    private void OnMainViewFolderChanged(string folder)
+    {
+        try { BindToFolder(folder); }
+        catch (Exception ex) { AppLog.Error("OnMainViewFolderChanged", ex); }
+    }
+
+    private void BindToFolder(string folder)
+    {
+        var newKey = GetFolderKey(folder);
+        if (newKey == _folderKey) return;
+
+        AppLog.Write($"[Instance] Switching bind from {_folderKey} to {newKey}");
+
+        // Останавливаем старый pipe-сервер.
+        try { _pipeCts.Cancel(); } catch { }
+        try { _pipeCts.Dispose(); } catch { }
+        _pipeCts = new CancellationTokenSource();
+
+        // Освобождаем старый мьютекс.
+        if (_ownsMutex && _mutex != null)
+        {
+            try { _mutex.ReleaseMutex(); } catch { }
+            _ownsMutex = false;
+        }
+        _mutex?.Dispose();
+        _mutex = null;
+
+        // Пытаемся захватить мьютекс новой папки.
+        _mutex = CreateOwnedMutex(MutexNameForKey(newKey), out _ownsMutex);
+        if (!_ownsMutex)
+        {
+            AppLog.Write($"[Instance] Could not own new folder mutex: {newKey}");
+            _mutex?.Dispose();
+            _mutex = null;
+            return;
+        }
+
+        _folderKey = newKey;
+        StartPipeServerForFolder(newKey);
+    }
+
+    internal static string GetFolderKey(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return "empty";
+        var folder = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? string.Empty;
+        if (string.IsNullOrEmpty(folder)) return "empty";
+        return folder.ToLowerInvariant().TrimEnd('\\', '/');
+    }
+
+    private static string MutexNameForKey(string key)
+    {
+        var suffix = key == "empty" ? "empty" : HashKey(key);
+        return "Prosmotr.SingleInstance." + suffix;
+    }
+
+    private static string PipeNameForKey(string key)
+    {
+        var suffix = key == "empty" ? "empty" : HashKey(key);
+        return "Prosmotr.OpenFile." + suffix;
+    }
+
+    private static string HashKey(string key)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(key);
+        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+        return Convert.ToHexString(hash)[..16];
+    }
+
+    private static Mutex? CreateOwnedMutex(string name, out bool owns)
+    {
+        owns = false;
+        try
+        {
+            var m = new Mutex(true, name, out bool created);
+            owns = created;
+            return m;
+        }
+        catch (AbandonedMutexException)
+        {
+            try
+            {
+                var m = new Mutex(false, name, out _);
+                try
+                {
+                    if (m.WaitOne(0))
+                    {
+                        owns = true;
+                        return m;
+                    }
+                }
+                catch (AbandonedMutexException)
+                {
+                    owns = true;
+                    return m;
+                }
+                m.Dispose();
+            }
+            catch { }
+        }
+        catch { }
+        return null;
     }
 
     private void TryIntegrateShell()
@@ -307,6 +426,8 @@ public partial class App : Application
         try { _host?.Services.GetService<IPlaybackPositionStore>()?.Flush(); } catch { }
         // Корректно освобождаем singletons (SettingsService, PlaybackPositionStore, LibVlcProvider).
         try { _host?.Dispose(); } catch { }
+        try { _pipeCts.Cancel(); } catch { }
+        try { _pipeCts.Dispose(); } catch { }
         // ReleaseMutex допустим только на владеющем экземпляре; на втором (не получившем
         // ownership) он бросил бы ApplicationException.
         if (_ownsMutex) { try { _mutex?.ReleaseMutex(); } catch { } }

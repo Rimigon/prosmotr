@@ -64,6 +64,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Просьба открыть окно свойств файла (обрабатывает MainWindow).</summary>
     public event Action<MediaItem>? PropertiesRequested;
 
+    /// <summary>Папка текущей галереи изменилась — App переключает single-instance привязку.</summary>
+    public event Action<string>? FolderChanged;
+
     public bool ShowThumbnailStrip =>
         _settings.Settings.ShowThumbnails && HasItems && !IsFullScreen;
 
