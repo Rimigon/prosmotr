@@ -162,6 +162,10 @@ public sealed partial class MainViewModel
         SelectedSortField = sort.Field;
         SortDescending = sort.Descending;
         _suppressSortChange = false;
+        // Всегда применяем сортировку явно: при открытии новой папки список уже
+        // построен в нужном порядке, но при переиспользовании окна UI-индикатор
+        // мог остаться в том же состоянии, и событие изменения не сработало.
+        ApplySort();
     }
 
     partial void OnSelectedSortFieldChanged(SortField value)
