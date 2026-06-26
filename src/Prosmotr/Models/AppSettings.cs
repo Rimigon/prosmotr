@@ -49,8 +49,10 @@ public sealed class AppSettings
     // --- Сортировка ---
     public SortField SortBy { get; set; } = SortField.Name;
     public bool SortDescending { get; set; } = false;
-    /// <summary>При открытии папки повторять порядок сортировки открытого окна Проводника.</summary>
-    public bool MatchExplorerSort { get; set; } = true;
+    /// <summary>При открытии папки повторять порядок сортировки открытого окна Проводника.
+    /// По умолчанию выключено: программа всегда применяет собственную сортировку (SortBy/SortDescending),
+    /// сохранённую внутри приложения, а не порядок Проводника.</summary>
+    public bool MatchExplorerSort { get; set; } = false;
 
     /// <summary>Явно выбранная пользователем сортировка по папкам (ключ — путь, значение — "Поле:Убыв").
     /// Имеет ВЫСШИЙ приоритет — перекрывает автоопределение из Проводника.</summary>
