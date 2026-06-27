@@ -52,6 +52,11 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     // прислать промежуточную/устаревшую позицию, которая перезапишет PositionMs назад.
     private readonly DispatcherTimer _seekCooldown;
     private bool _seekCooldownActive;
+    // Монотонное поколение seek'а. TimeChanged приходит из потока LibVLC и маршалится
+    // в UI через BeginInvoke; устаревшее событие может выполниться уже после того, как
+    // cooldown снят. Захватываем номер поколения в момент события и игнорируем лямбду,
+    // если за это время начался новый seek (или текущий ещё не обработан).
+    private long _seekGen;
     // Дросселирование клавиатурных шагов: при удержании стрелки система шлёт повторы
     // очень часто, а LibVLC не успевает обрабатывать seek'и на высокой скорости.
     // Накапливаем направления и выполняем один seek по таймеру.
@@ -348,6 +353,11 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     {
         var clamped = Math.Clamp(ms, 0, Math.Max(0, LengthMs));
 
+        // Новое поколение seek'а: события TimeChanged из предыдущего поколения
+        // не должны перезаписывать PositionMs после seek'а, даже если их
+        // Dispatcher-лямбда выполнится после окончания cooldown.
+        Interlocked.Increment(ref _seekGen);
+
         // После EndReached плеер остановлен; простой SetTime + Play часто не
         // возобновляет воспроизведение корректно (TogglePause перестаёт работать).
         // Перезагружаем дорожку с :start-time на нужной позиции — единственный
@@ -370,7 +380,8 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
             PositionMs = clamped;
             // Блокируем устаревшие TimeChanged, которые иначе перезаписывали бы PositionMs
             // обратно на старую позицию и создавали эффект "возврата назад" при быстром
-            // клавиатурном seek'е.
+            // клавиатурном seek'е. Cooldown защищает первые 180 мс; поколение _seekGen
+            // ловит устаревшие события, которые всё-таки выполнились позже.
             _seekCooldown.Stop();
             _seekCooldown.Start();
             _seekCooldownActive = true;
@@ -561,15 +572,23 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     private static string FormatRate(float r) =>
         r.ToString("0.##", CultureInfo.CurrentCulture) + "×";
 
-    private void OnTimeChanged(object? sender, MediaPlayerTimeChangedEventArgs e) =>
+    private void OnTimeChanged(object? sender, MediaPlayerTimeChangedEventArgs e)
+    {
+        // Захватываем поколение в момент события (поток LibVLC), а не в UI-лямбде,
+        // чтобы устаревшее событие не обогнало смену _seekGen и не сбило PositionMs.
+        var capturedGen = Interlocked.Read(ref _seekGen);
         OnUi(() =>
         {
             if (_disposed) return;
             // Сразу после seek'а декодер может прислать TimeChanged с устаревшей позицией.
             // Игнорируем его, пока не пройдёт cooldown — иначе PositionMs скачет назад.
             if (_seekCooldownActive) return;
+            // Дополнительно отсекаем события, выполнившиеся с опозданием после cooldown:
+            // их поколение отличается от текущего.
+            if (capturedGen != Interlocked.Read(ref _seekGen)) return;
             PositionMs = e.Time;
         });
+    }
 
     private static void OnUi(Action action)
     {

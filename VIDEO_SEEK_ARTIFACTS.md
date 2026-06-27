@@ -4,6 +4,7 @@
 > Ведём фиксацию каждого шага, чтобы не потерять контекст между попытками.
 
 ## Дата начала
+
 2026-06-18
 
 ## 1. Что наблюдаем
@@ -56,32 +57,32 @@
 
 1. **VideoLAN Forums — macro-blocking/distortion when seeking**
    - Пользователи жалуются на блоки/искажения при перемотке, особенно OGM/MKV.
-   - URL: http://forum.videolan.org/viewtopic.php?t=117772
+   - URL: <http://forum.videolan.org/viewtopic.php?t=117772>
 
 2. **VideoLAN Forums — Playback problem 3.0.3 - Windows 7 - 64**
    - Похожие артефакты лечились включением **Fast seek** в Tools > Preferences > Input/Codecs.
-   - URL: https://forum.videolan.org/viewtopic.php?t=144755
+   - URL: <https://forum.videolan.org/viewtopic.php?t=144755>
 
 3. **VLC GitLab issue #21440 — Video seek causes video track to lag when "Hurry up" is not enabled**
    - `avcodec-hurry-up=0` вызывает лаги после seek. По умолчанию `avcodec-hurry-up=1`.
-   - URL: https://code.videolan.org/videolan/vlc/-/issues/21440
+   - URL: <https://code.videolan.org/videolan/vlc/-/issues/21440>
 
 4. **SuperUser — VLC shows distorted video when seeking (H.264 / NVIDIA)**
    - Искажения при seek связаны с VDPAU/аппаратным выводом; смена видеовывода помогает.
-   - URL: https://superuser.com/questions/1013848/vlc-shows-distorted-video-when-seeking
+   - URL: <https://superuser.com/questions/1013848/vlc-shows-distorted-video-when-seeking>
 
 5. **Hacker News discussion**
    - VLC по умолчанию seek'ает точно к таймстампу, декодируя несколько I-кадров.
    - Включение **Fast seek** заставляет VLC перескакивать к ближайшему keyframe, как mpv/MPC-HC.
-   - URL: https://news.ycombinator.com/item?id=25994013
+   - URL: <https://news.ycombinator.com/item?id=25994013>
 
 6. **VLC-devel 2014 — [PATCH] Fix for H264 seek without jerks and fast forward at 2x and 4x speed**
    - Патч для RTSP VOD: отключает дроп поздних кадров и сброс PCR, чтобы убрать рывки на 2×/4×.
-   - URL: https://mailman.videolan.org/pipermail/vlc-devel/2014-January/096560.html
+   - URL: <https://mailman.videolan.org/pipermail/vlc-devel/2014-January/096560.html>
 
 7. **vlcj issue #146 — Transition in/out of slow modes is choppy and delayed**
    - `setRate()` вызывает заикания/задержки; это libvlc-level проблема, не обёртки.
-   - URL: https://github.com/caprica/vlcj/issues/146
+   - URL: <https://github.com/caprica/vlcj/issues/146>
 
 ### Общие выводы из поиска
 
@@ -151,6 +152,7 @@
 ### Что сделаем
 
 Сохраняем идею «rate=1.0 на момент seek», но восстановление исходной скорости делаем **отложенным и с debounce**:
+
 - При каждом `SeekTo`: если `Rate > 1.0`, сбрасываем к `1.0` и запускаем/перезапускаем `DispatcherTimer` (~120 мс).
 - Таймер восстанавливает исходную скорость только после того, как прошло 120 мс с последнего seek.
 - При удержании стрелки/частом drag rate остаётся `1.0` в течение серии seek'ов — плеер меньше дергается.
@@ -333,7 +335,7 @@
 
 ---
 
-  - `VideoViewerView`: добавлен `_seekCooldown` (180 мс) и `ArmSeekCooldown()`.
+- `VideoViewerView`: добавлен `_seekCooldown` (180 мс) и `ArmSeekCooldown()`.
 - **Собрано и опубликовано** в `app\`.
 - **Unit-тесты:** 90/90 пройдено.
 - **Ручная проверка:** требуется — сценарий "до конца → назад → пауза" и drag таймлайна.
@@ -514,3 +516,42 @@
 Если попытка 1a не устранит артефакты, пробовать вместе с 1a или вместо неё.
 
 ---
+
+## 16. Попытка 8: поколение seek'а для защиты от опоздавших TimeChanged
+
+### Проблема
+
+После введения cooldown'а 180 мс отдельные одиночные нажатия стрелок всё равно возвращали
+ползунок/счётчик времени обратно. При удержании стрелки проблема не воспроизводилась,
+на паузе — тоже нет.
+
+### Почему cooldown не хватило
+
+`TimeChanged` приходит из потока LibVLC и маршалится в UI через `BeginInvoke`. Cooldown
+останавливает обработку только по флагу `_seekCooldownActive`, который проверяется в момент
+выполнения лямбды. Если устаревшее событие уже стояло в очереди Dispatcher и выполнилось
+после того, как таймер сбросил флаг, оно перезаписывало `PositionMs` старой позицией —
+эффект "вернуло назад".
+
+### Решение
+
+Добавлено монотонное поколение seek'а (`long _seekGen`):
+
+- В `SeekTo` перед любым seek'ом вызывается `Interlocked.Increment(ref _seekGen)`.
+- В `OnTimeChanged` номер поколения захватывается в момент события
+  (поток LibVLC) и передаётся в UI-лямбду.
+- Лямбда игнорирует событие, если его поколение отличается от текущего.
+
+Таким образом устаревшее `TimeChanged`, выполнившееся с опозданием после cooldown,
+не сможет сбросить `PositionMs`.
+
+### Результат и проверка
+
+- **Реализовано**:
+  - `private long _seekGen` в `VideoViewerViewModel`.
+  - `Interlocked.Increment(ref _seekGen)` в начале `SeekTo`.
+  - Захват `capturedGen` в `OnTimeChanged` и сравнение
+    `capturedGen != Interlocked.Read(ref _seekGen)`.
+- Старый 180-мс cooldown оставлен как первый рубеж защиты.
+- **Сборка и тесты:** 90/90 пройдено.
+- **Ручная проверка:** требуется — одиночные нажатия ←/→ на разных видео.
