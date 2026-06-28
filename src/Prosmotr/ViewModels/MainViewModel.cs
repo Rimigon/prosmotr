@@ -55,7 +55,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     public IReadOnlyList<SortField> SortFields { get; } = new[]
     {
-        SortField.Name, SortField.DateModified, SortField.DateCreated, SortField.Size, SortField.Type
+        SortField.Name, SortField.DateModified, SortField.DateCreated, SortField.Size, SortField.Type, SortField.Duration
     };
 
     /// <summary>Просьба открыть окно настроек (обрабатывает MainWindow).</summary>

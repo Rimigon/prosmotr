@@ -201,6 +201,7 @@ src/Prosmotr/
   Infrastructure/            — AppLog, SupportedFormats, NativeMethods (Корзина),
                                RecycleBinRestore (отмена удаления), ShellThumbnail,
                                ExplorerSortReader, NaturalStringComparer,
+                               ShellMetadata (длительность видео через Shell-COM),
                                FullScreenHelper (Win32 borderless fullscreen),
                                DisplayConfigApi (CCD: QueryDisplayConfig / SetDisplayConfig P/Invoke)
   Resources/                 — иконка app.ico, темы (AppResources.xaml)
@@ -448,6 +449,26 @@ ICC-профилями. Magick нормализует/сбрасывает пр�
 и **явно вызывает `ApplySort()`**. Это гарантирует, что при открытии новой папки сортировка
 применена, даже если индикатор уже находился в нужном состоянии и событие изменения не
 сработало (например, после перезапуска приложения).
+
+**Поле «Продолжительность» (`SortField.Duration`).** Видео сортируются по длительности,
+фото — по размеру файла (fallback), т.к. у фото нет длительности. Ключ компаратора
+(`MediaLibraryService.DurationKey`): `IsVideo ? DurationMs : FileSizeBytes`. Масштабы
+разные (мс vs байты), поэтому в смешанной галерее относительный порядок видео/фото
+зависит от чисел (в реальных файлах размер фото в байтах обычно > длительности видео в мс,
+так что по возрастанию видео группируются раньше фото) — единой шкалы нет, и это ожидаемо.
+
+Длительность видео НЕ хранится в `MediaItem` по умолчанию и **читается лениво** через
+Shell-метаданные `System.Media.Duration` (`Infrastructure/ShellMetadata.TryGetDurations`,
+один `NameSpace` на папку, STA-поток `StaTask` — Shell-COM апартмент-ниточный, как
+`ExplorerSortReader`/`RecycleBinRestore`). Чтение довольно дорогое (COM на файл), поэтому
+оно происходит **только когда выбрана сортировка по продолжительности**: при открытии
+папки с такой сортировкой — внутри `ScanAsync` (`MediaLibraryService.EnsureDurationsAsync`
+перед `ApplyOrder`); при смене поля на «Продолжительность» уже открытой папки — внутри
+`MainViewModel.ApplySortAsync` (поэтому `ApplySort` стал async, остальные поля идут
+синхронно без await). `EnsureDurationsAsync` идемпотентен (не перечитывает уже
+заполненные `DurationMs`). Не вычитанные/неизвестные длительности = 0 — такие видео идут
+первыми по возрастанию. Не добавляй чтение длительности в каждое сканирование — это
+замедлит открытие видео-тяжёлых папок при сортировке по имени/дате.
 
 ### 5.7. Хранилище данных и логи
 

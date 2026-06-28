@@ -30,7 +30,9 @@ public enum SortField
     DateModified,
     DateCreated,
     Size,
-    Type
+    Type,
+    /// <summary>По продолжительности: видео — по длительности, фото — по размеру файла (fallback).</summary>
+    Duration
 }
 
 /// <summary>Параметры сортировки: поле + направление.</summary>

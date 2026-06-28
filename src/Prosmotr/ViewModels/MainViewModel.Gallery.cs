@@ -216,9 +216,24 @@ public sealed partial class MainViewModel
         return false;
     }
 
-    private void ApplySort()
+    private void ApplySort() => _ = ApplySortAsync();
+
+    /// <summary>Применить текущую сортировку. Для «по продолжительности» сначала
+    /// догружаем длительность видео через Shell-метаданные (если её ещё нет — напр.
+    /// пользователь сменил поле сортировки после открытия папки). Для прочих полей —
+    /// синхронно (без await), поведение как раньше.
+    /// </summary>
+    private async Task ApplySortAsync()
     {
         if (!_nav.HasItems) return;
+
+        if (SelectedSortField == SortField.Duration)
+        {
+            try { await _library.EnsureDurationsAsync(_nav.Items, _openCts?.Token ?? CancellationToken.None); }
+            catch (OperationCanceledException) { return; }
+            catch (Exception ex) { AppLog.Error("MainViewModel.ApplySort duration fill", ex); }
+        }
+
         var sorted = _library.Sort(_nav.Items, new SortSpec(SelectedSortField, SortDescending));
         _nav.ReorderPreservingCurrent(sorted);
     }

@@ -59,6 +59,40 @@ public sealed class MediaLibraryService : IMediaLibraryService
         return list;
     }
 
+    /// <summary>Заполнить <c>DurationMs</c> для видео, у которых она ещё неизвестна (через
+    /// Shell-метаданные System.Media.Duration на STA-потоке). Для фото — no-op.
+    /// Идемпотентен: повторно не перечитывает уже заполненные. Все элементы галереи
+    /// лежат в одной папке — берётся один NameSpace.</summary>
+    public async Task EnsureDurationsAsync(IReadOnlyList<MediaItem> items, CancellationToken ct = default)
+    {
+        if (items.Count == 0) return;
+        var folder = items[0].DirectoryPath;
+        if (string.IsNullOrEmpty(folder)) return;
+
+        var need = new List<string>();
+        foreach (var i in items)
+            if (i.IsVideo && i.DurationMs == 0) need.Add(i.FileName);
+        if (need.Count == 0) return;
+
+        ct.ThrowIfCancellationRequested();
+        Dictionary<string, long> durations;
+        try
+        {
+            durations = await StaTask.Run(() => ShellMetadata.TryGetDurations(folder, need)).ConfigureAwait(false);
+        }
+        catch
+        {
+            /* Shell недоступен — сортировка отработает по нулевой длительности */
+            return;
+        }
+
+        foreach (var i in items)
+        {
+            if (i.IsVideo && i.DurationMs == 0 && durations.TryGetValue(i.FileName, out var ms))
+                i.DurationMs = ms;
+        }
+    }
+
     /// <summary>
     /// Сортировка, устойчивая к нетранзитивному компаратору. <c>StrCmpLogicalW</c>
     /// (натуральная сортировка) на некоторых наборах имён нарушает транзитивность, и
@@ -90,7 +124,7 @@ public sealed class MediaLibraryService : IMediaLibraryService
 
     private Task<IReadOnlyList<MediaItem>> ScanAsync(string folder, SortSpec sort,
         IReadOnlyList<string>? explicitOrder, CancellationToken ct) =>
-        Task.Run<IReadOnlyList<MediaItem>>(() =>
+        Task.Run<IReadOnlyList<MediaItem>>(async () =>
         {
             var result = new List<MediaItem>();
             var options = new EnumerationOptions
@@ -124,6 +158,12 @@ public sealed class MediaLibraryService : IMediaLibraryService
             }
             catch (OperationCanceledException) { throw; }
             catch { /* нет доступа к папке — игнорируем */ }
+
+            // Длительность видео нужна только при сортировке по продолжительности;
+            // читаем её через Shell-метаданные на STA-потоке (довольно дорого — не на
+            // каждое открытие). Для остальных сортировок оставляем DurationMs = 0.
+            if (sort.Field == SortField.Duration)
+                await EnsureDurationsAsync(result, ct).ConfigureAwait(false);
 
             ApplyOrder(result, explicitOrder, sort);
             return result;
@@ -164,6 +204,8 @@ public sealed class MediaLibraryService : IMediaLibraryService
                 SortField.DateModified => a.LastWriteTimeUtc.CompareTo(b.LastWriteTimeUtc),
                 SortField.DateCreated => a.CreationTimeUtc.CompareTo(b.CreationTimeUtc),
                 SortField.Type => string.Compare(a.Extension, b.Extension, StringComparison.OrdinalIgnoreCase),
+                // Видео — по длительности, фото — по размеру файла (fallback).
+                SortField.Duration => DurationKey(a).CompareTo(DurationKey(b)),
                 _ => NaturalStringComparer.Instance.Compare(a.FileName, b.FileName)
             };
             if (cmp == 0 && sort.Field != SortField.Name)
@@ -171,6 +213,13 @@ public sealed class MediaLibraryService : IMediaLibraryService
             return dir * cmp;
         };
     }
+
+    /// <summary>Ключ сортировки «по продолжительности»: для видео — длительность,
+    /// для фото — размер файла. Масштабы разные (мс vs байты), поэтому в смешанной
+    /// галерее видео группируются раньше фото (по возрастанию) — это ожидаемо: единого
+    /// измеримого «размера» у фото и видео нет, пользователь хочет фото-по-размеру
+    /// и видео-по-длительности раздельно.</summary>
+    private static long DurationKey(MediaItem x) => x.IsVideo ? x.DurationMs : x.FileSizeBytes;
 
     private static void TryFillMetadata(MediaItem item)
     {

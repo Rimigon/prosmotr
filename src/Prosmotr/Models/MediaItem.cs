@@ -24,6 +24,11 @@ public sealed class MediaItem
     public DateTime LastWriteTimeUtc { get; set; }
     public DateTime CreationTimeUtc { get; set; }
 
+    /// <summary>Длительность видео в мс (0 — неизвестно/не видео). Заполняется через
+    /// Shell-метаданные (System.Media.Duration) только для видео и только когда нужно
+    /// (сортировка по продолжительности). Для фото не используется.</summary>
+    public long DurationMs { get; set; }
+
     public string Extension { get; }
     public string FileName { get; }
     public string DirectoryPath { get; }

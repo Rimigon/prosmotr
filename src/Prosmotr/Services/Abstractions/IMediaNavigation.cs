@@ -20,6 +20,11 @@ public interface IMediaLibraryService
     /// <summary>Отсортировать список по заданным параметрам (вторичный ключ — натуральное имя).</summary>
     IReadOnlyList<MediaItem> Sort(IEnumerable<MediaItem> items, SortSpec sort);
 
+    /// <summary>Заполнить DurationMs для видео, у которых она ещё неизвестна, через
+    /// Shell-метаданные (System.Media.Duration). Идемпотентен. Нужен только для
+    /// сортировки по продолжительности.</summary>
+    Task EnsureDurationsAsync(IReadOnlyList<MediaItem> items, CancellationToken ct = default);
+
     /// <summary>Создать одиночный элемент из пути (без сканирования папки).</summary>
     MediaItem? CreateItem(string path);
 }

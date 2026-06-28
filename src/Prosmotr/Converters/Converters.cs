@@ -121,6 +121,7 @@ public sealed class SortFieldToStringConverter : IValueConverter
             "DateCreated" => "Дата создания",
             "Size" => "Размер",
             "Type" => "Тип",
+            "Duration" => "Продолжительность",
             _ => "Имя"
         };
 
