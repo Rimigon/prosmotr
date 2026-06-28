@@ -57,6 +57,26 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     // cooldown снят. Захватываем номер поколения в момент события и игнорируем лямбду,
     // если за это время начался новый seek (или текущий ещё не обработан).
     private long _seekGen;
+    // Position-based guard от «прыжка ползунка назад». libvlc_media_player_set_time
+    // асинхронен: после _playback.Time = target декодер ещё некоторое время присылает
+    // TimeChanged со СТАРОЙ позицией, пока демуксер не сбросит буфер и не начнёт чтение
+    // с ключевого кадра. Таймерный cooldown 180 мс ловит только первый всплеск; при
+    // длинных/обратных перемотках декодер не успевает «сорваться» со старой позиции за
+    // 180 мс — устаревшее событие принимается и PositionMs (а с ним ползунок) прыгает
+    // назад. Поэтому дополнительно помним «якорь» (позицию ДО seek'а) и цель: пока
+    // событие сообщает позицию рядом с якорем и далеко от цели — декодер ещё не ушёл,
+    // отбрасываем. Защитное окно SEEK_GUARD_S предохраняет от вечного зависания, если
+    // seek не удался: по истечении принимаем любое TimeChanged и сбрасываем guard.
+    // отбрасываем. Жёсткий потолок SEEK_GUARD_S (10 с) предохраняет от вечного
+    // зависания, если seek не удался. Нормально guard снимается по факту "декодер
+    // прошёл цель" (e.Time>T), а не по таймеру: на длинных GOP разгон с ключевого
+    // кадра до цели может занять несколько секунд, и короткое окно сбрасывало бы
+    // ползунок назад (TRACK-BACK). 10 с — с запасом под медленный программный
+    // декодер; в норме catchup срабатывает за <1-5 с.
+    private const double SEEK_GUARD_S = 10.0;
+    private double _seekAnchorMs = -1;   // позиция до seek'а (откуда не должен прыгать назад)
+    private double _seekTargetMs = -1;   // цель seek'а
+    private DateTime _seekGuardUntil = DateTime.MinValue;
     // Дросселирование клавиатурных шагов: при удержании стрелки система шлёт повторы
     // очень часто, а LibVLC не успевает обрабатывать seek'и на высокой скорости.
     // Накапливаем направления и выполняем один seek по таймеру.
@@ -211,6 +231,11 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     /// </summary>
     private void LoadAndPlayDeferred(long startMs)
     {
+        // Новая загрузка дорожки (старт/переключение/replay/seek из EndReached) —
+        // позиция плеера пойдёт с начала/start-time, «якоря» предыдущего seek'а нет.
+        // Сбрасываем guard, иначе он мог бы подавлять актуальные TimeChanged нового видео.
+        _seekAnchorMs = -1;
+        _seekTargetMs = -1;
         var gen = ++_loadGen;
         var path = Item.FullPath;
         var app = Application.Current;
@@ -362,30 +387,46 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         // возобновляет воспроизведение корректно (TogglePause перестаёт работать).
         // Перезагружаем дорожку с :start-time на нужной позиции — единственный
         // надёжный способ выйти из состояния конца видео и продолжить с середины.
-        if (IsEnded && clamped < LengthMs)
+        // НО только для НАЗАД (в более раннюю позицию): перемотка ВПЕРЁВ у конца
+        // (clamped>=PositionMs) не должна перезагружаться — иначе видео бесконечно
+        // воспроизводит последний сегмент (reload > EndReached > reload …).
+        if (IsEnded && clamped < PositionMs - 100)
         {
             IsEnded = false;
             IsBuffering = true;
             _pendingRate = Rate;
             _pauseAfterStart = true; // после reload оставляем на паузе
+            _seekAnchorMs = -1;     // reload — position-based guard не нужен
+            _seekTargetMs = -1;
             _playback.StopAndRelease();
             LoadAndPlayDeferred((long)clamped);
             return;
         }
 
+        // Перемотка вперёд к самому концу / за конец при уже законченном видео —
+        // ничего не делаем (остаёмся в конце). К следующему файлу пользователя
+        // переносит обычная навигация стрелками MainWindow, а не этот seek.
+        if (IsEnded) return;
+
+        // Запоминаем «якорь» (позицию ДО seek'а) и цель ДО смены PositionMs: guard в
+        // OnTimeChanged удержит ползунок на цели, пока декодер LibVLC не дойдёт до неё
+        // (см. комментарий в OnTimeChanged — про ключевые кадры и длинный GOP).
+        _seekAnchorMs = PositionMs;
+        _seekTargetMs = clamped;
+        _seekGuardUntil = DateTime.UtcNow.AddSeconds(SEEK_GUARD_S);
+
         _playback.Time = (long)clamped;
 
-        if (!isDrag)
-        {
-            PositionMs = clamped;
-            // Блокируем устаревшие TimeChanged, которые иначе перезаписывали бы PositionMs
-            // обратно на старую позицию и создавали эффект "возврата назад" при быстром
-            // клавиатурном seek'е. Cooldown защищает первые 180 мс; поколение _seekGen
-            // ловит устаревшие события, которые всё-таки выполнились позже.
-            _seekCooldown.Stop();
-            _seekCooldown.Start();
-            _seekCooldownActive = true;
-        }
+        // Сразу ставим ползунок на цель (для drag тоже — во время перетаскивания View
+        // игнорирует PositionMs, а после отпускания guard удержит его на цели).
+        PositionMs = clamped;
+        // Cooldown 180 мс гасит первый синхронный всплеск устаревших событий от декодера;
+        // дальше работает position-based guard. Поколение _seekGen отбрасывает события,
+        // выполнившиеся с опозданием после нового seek'а.
+        _seekCooldown.Stop();
+        _seekCooldown.Start();
+        _seekCooldownActive = true;
+
         // Позицию не сохраняем здесь: каждый seek/shuttle-шаг иначе запускал бы
         // debounce-запись на диск и микро-задержки. Сохранение происходит при паузе,
         // остановке, завершении видео и при выходе из viewer (Dispose).
@@ -552,6 +593,11 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         IsPlaying = false;
         IsEnded = true;
         PositionMs = LengthMs;
+        // Видео дошло до конца — снимаем position-based guard: иначе отложенные
+        // шаги (ExecutePendingSteps) ждали бы его вечно (после стопа TimeChanged не
+        // приходит и guard не снялся бы через OnTimeChanged).
+        _seekTargetMs = -1;
+        _seekAnchorMs = -1;
         SavePosition();
         _positions.Remove(Item.FullPath); // досмотрено — позицию не храним
     });
@@ -580,12 +626,41 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         OnUi(() =>
         {
             if (_disposed) return;
+            // Невалидное время (стоп/выгрузка медиа шлёт t=-1): не роняем ползунок в начало.
+            if (e.Time < 0) return;
             // Сразу после seek'а декодер может прислать TimeChanged с устаревшей позицией.
             // Игнорируем его, пока не пройдёт cooldown — иначе PositionMs скачет назад.
             if (_seekCooldownActive) return;
             // Дополнительно отсекаем события, выполнившиеся с опозданием после cooldown:
             // их поколение отличается от текущего.
             if (capturedGen != Interlocked.Read(ref _seekGen)) return;
+            // Position-based guard «держим ползунок на цели, пока декодер не пройдёт её».
+            // libvlc_media_player_set_time делает accurate seek: декодер приземляется на
+            // ближайший ключевой кадр K≤T и разгоняется K→T. На видео с длинным GOP
+            // (напр. запись экрана — ключевые кадры каждые ~12 с) разгон длится дольше
+            // 180 мс cooldown'а. Нюанс: set_time(T) сперва возвращает ЭХО e.Time==T ещё
+            // до реальной перемотки, а затем идут позиции НИЖЕ цели (разгон с ключевого
+            // кадра) — поэтому "release при e.Time>=T" срабатывал бы на эхе, и последующие
+            // разгонные события (ниже цели) переписывали бы PositionMs назад. Потому
+            // снимаем guard ТОЛЬКО когда декодер ПРОШЁЛ цель (e.Time>T) и ушёл от старой
+            // позиции (не nearOld — ловит старую позицию при обратной перемотке). Эхо (==T),
+            // разгон (<T) и старая позиция (nearOld) — всё удерживается на цели. Защитное окно
+            // SEEK_GUARD_S страхует от зависания (пауза ровно на цели / seek не удался).
+            if (_seekTargetMs >= 0)
+            {
+                var target = _seekTargetMs;
+                var nearOld = Math.Abs(e.Time - _seekAnchorMs) < 500.0;
+                if (DateTime.UtcNow < _seekGuardUntil && !(e.Time > target && !nearOld))
+                {
+                    // эхо / разгон ниже цели / старая позиция — держим ползунок на цели
+                    if (PositionMs != target) PositionMs = target;
+                    return;
+                }
+                // декодер прошёл цель и ушёл от старой позиции ИЛИ истёк жёсткий потолок
+                // (10 с — только если seek реально не удался; в норме срабатывает catchup).
+                _seekTargetMs = -1;
+                _seekAnchorMs = -1;
+            }
             PositionMs = e.Time;
         });
     }
