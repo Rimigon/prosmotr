@@ -56,6 +56,38 @@ public sealed class SettingsValidationTests
     }
 
     [Fact]
+    public void OutOfRangeMiniTimelineThreshold_ReplacedWithDefault()
+    {
+        var s = new AppSettings { MiniTimelineThresholdMinutes = 200 }; // вне [1, 120]
+        SettingsService.ValidateAndFix(s);
+        Assert.Equal(new AppSettings().MiniTimelineThresholdMinutes, s.MiniTimelineThresholdMinutes);
+    }
+
+    [Fact]
+    public void ZeroMiniTimelineThreshold_ReplacedWithDefault()
+    {
+        var s = new AppSettings { MiniTimelineThresholdMinutes = 0 }; // вне [1, 120]
+        SettingsService.ValidateAndFix(s);
+        Assert.Equal(new AppSettings().MiniTimelineThresholdMinutes, s.MiniTimelineThresholdMinutes);
+    }
+
+    [Fact]
+    public void Default_MiniTimelineSettings_AreExpected()
+    {
+        var s = new AppSettings();
+        Assert.True(s.ShowMiniTimeline);
+        Assert.Equal(20, s.MiniTimelineThresholdMinutes);
+    }
+
+    [Fact]
+    public void ValidMiniTimelineThreshold_IsKept()
+    {
+        var s = new AppSettings { MiniTimelineThresholdMinutes = 45 };
+        SettingsService.ValidateAndFix(s);
+        Assert.Equal(45, s.MiniTimelineThresholdMinutes);
+    }
+
+    [Fact]
     public void MultipleInvalidValues_AllReplacedIndependently()
     {
         var defaults = new AppSettings();
@@ -63,11 +95,13 @@ public sealed class SettingsValidationTests
         {
             SeekStepSeconds = -1,         // невалидно
             DefaultPlaybackRate = 1.25f,  // валидно — должно сохраниться
-            SlideshowIntervalSeconds = 999 // невалидно
+            SlideshowIntervalSeconds = 999, // невалидно
+            MiniTimelineThresholdMinutes = 999 // невалидно
         };
         SettingsService.ValidateAndFix(s);
         Assert.Equal(defaults.SeekStepSeconds, s.SeekStepSeconds);
         Assert.Equal(1.25f, s.DefaultPlaybackRate);
         Assert.Equal(defaults.SlideshowIntervalSeconds, s.SlideshowIntervalSeconds);
+        Assert.Equal(defaults.MiniTimelineThresholdMinutes, s.MiniTimelineThresholdMinutes);
     }
 }

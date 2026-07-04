@@ -23,6 +23,11 @@ public sealed class AppSettings
     public bool FrameByFrameSeek { get; set; } = false;
     /// <summary>Стрелки ←/→ всегда перематывают открытое видео, а не переключают файлы (в любом режиме окна).</summary>
     public bool ArrowKeysSeekVideo { get; set; } = false;
+    /// <summary>Показывать мини-таймлайн при скрытой панели управления видео.</summary>
+    public bool ShowMiniTimeline { get; set; } = true;
+    /// <summary>Видео короче этого порога (в минутах) показывает мини-таймлайн при скрытой панели.</summary>
+    [Range(1, 120)]
+    public int MiniTimelineThresholdMinutes { get; set; } = 20;
 
     // --- Удаление ---
     public bool ConfirmDelete { get; set; } = true;
