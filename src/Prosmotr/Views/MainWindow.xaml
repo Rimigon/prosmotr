@@ -26,6 +26,9 @@
         <DataTemplate DataType="{x:Type vm:VideoViewerViewModel}">
             <views:VideoViewerView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:PictureInPicturePlaceholderViewModel}">
+            <views:PictureInPicturePlaceholderView />
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
