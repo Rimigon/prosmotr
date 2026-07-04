@@ -20,7 +20,7 @@ public partial class PictureInPictureWindow : Window
         Overlay.MouseMove += OnOverlayMouseMove;
     }
 
-    public void ShowFor(VideoViewerViewModel sourceVm, LibVLCSharp.Shared.MediaPlayer player, long resumeMs)
+    public void ShowFor(VideoViewerViewModel sourceVm, LibVLCSharp.Shared.MediaPlayer player, long resumeMs, bool wasPlaying)
     {
         if (DataContext is PictureInPictureViewModel old) old.Dispose();
         var vm = new PictureInPictureViewModel(sourceVm);
@@ -30,14 +30,23 @@ public partial class PictureInPictureWindow : Window
         Show();
         // VideoView (HwndHost) должен отрисовать нативный HWND ДО загрузки дорожки —
         // иначе плеер не найдёт окно вывода. Сначала привязываем MediaPlayer к этому VideoView,
-        // затем загружаем Media с позиции и запускаем.
+        // затем загружаем Media с позиции и продолжаем воспроизведение или оставляем на паузе,
+        // сохраняя состояние play/pause из основного окна.
         Dispatcher.BeginInvoke(() =>
         {
             PipVideo.MediaPlayer = player;
             var path = sourceVm.Item.FullPath;
             var playback = sourceVm.PlaybackService;
             playback.Load(path, resumeMs);
-            playback.Play();
+            if (wasPlaying)
+                playback.Play();
+            else
+            {
+                // Воспроизведение было на паузе: ставим флаг паузы до Play(),
+                // чтобы плеер стартовал в приостановленном состоянии на том же кадре.
+                playback.Pause();
+                playback.Play();
+            }
         }, DispatcherPriority.Render);
         ShowPanel();
     }

@@ -189,10 +189,14 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         {
             _resumeFromPip = false;
             // Нативный vout привязан к HWND PiP-окна. Чтобы переключить вывод на основной
-            // VideoView, достаточно остановить и снова запустить плеер: vout пересоздастся
-            // для текущего HWND (уже привязанного в View), не теряя позицию и Media.
+            // VideoView, останавливаем и снова запускаем плеер: vout пересоздастся
+            // для текущего HWND. Сохраняем статус play/pause из PiP, чтобы не включать
+            // воспроизведение, если видео было на паузе.
+            var wasPlaying = _playback.IsPlaying;
             _playback.Stop();
             _playback.Play();
+            if (!wasPlaying)
+                _playback.Pause();
         }
         else
         {
@@ -483,13 +487,15 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
         IsPictureInPicture = true;
 
-        // LibVLC привязывает MediaPlayer к HWND VideoView. Чтобы перенести плеер в другое
+        // Нативный vout привязан к HWND VideoView. Чтобы перенести плеер в другое
         // окно, НЕ достаточно просто присвоить MediaPlayer новому VideoView: нативный vout
         // остаётся привязанным к старому HWND и перекрашивает его в чёрный/белый цвет.
         // Надёжный способ — полностью остановить и выгрузить Media, затем пересоздать её
         // и подключить к плееру уже после того, как PiP-окно создало свой HWND.
-        // Позицию сохраняем, чтобы воспроизведение продолжилось с того же места.
+        // Позицию и статус play/pause сохраняем, чтобы воспроизведение продолжилось
+        // с того же места и в том же режиме.
         var positionSnapshot = _playback.Time;
+        var wasPlaying = _playback.IsPlaying;
         _playback.StopAndRelease();
         IsBuffering = true;
 
@@ -501,12 +507,12 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         {
             app.Dispatcher.BeginInvoke(() =>
             {
-                window.ShowFor(this, _playback.Player, positionSnapshot);
+                window.ShowFor(this, _playback.Player, positionSnapshot, wasPlaying);
             }, DispatcherPriority.Render);
         }
         else
         {
-            window.ShowFor(this, _playback.Player, positionSnapshot);
+            window.ShowFor(this, _playback.Player, positionSnapshot, wasPlaying);
         }
     }
 
