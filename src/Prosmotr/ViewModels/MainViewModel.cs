@@ -10,6 +10,7 @@ using Prosmotr.Infrastructure;
 using Prosmotr.Models;
 using Prosmotr.Services;
 using Prosmotr.Services.Abstractions;
+using Prosmotr.Views;
 
 namespace Prosmotr.ViewModels;
 
@@ -35,8 +36,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private readonly DispatcherTimer _slideshowTimer;
     private readonly Func<MediaItem, ImageViewerViewModel> _imageVmFactory;
     private readonly Func<MediaItem, VideoViewerViewModel> _videoVmFactory;
+    private readonly Func<VideoViewerViewModel, PictureInPictureWindow> _pipFactory;
 
     public ThumbnailStripViewModel ThumbnailStrip { get; }
+
+    private PictureInPictureWindow? _activePipWindow;
+    private VideoViewerViewModel? _pipSourceVm;
 
     [ObservableProperty] private object? _currentContent;
     [ObservableProperty] private bool _hasItems;
@@ -101,7 +106,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         INotificationService notify,
         IDisplayTopologyService displayTopology,
         Func<MediaItem, ImageViewerViewModel> imageVmFactory,
-        Func<MediaItem, VideoViewerViewModel> videoVmFactory)
+        Func<MediaItem, VideoViewerViewModel> videoVmFactory,
+        Func<VideoViewerViewModel, PictureInPictureWindow> pipFactory)
     {
         _library = library;
         _nav = nav;
@@ -126,6 +132,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         _imageVmFactory = imageVmFactory;
         _videoVmFactory = videoVmFactory;
+        _pipFactory = pipFactory;
 
         ThumbnailStrip = new ThumbnailStripViewModel(thumbnails);
         ThumbnailStrip.SelectionRequested += (_, item) => _nav.MoveTo(item);
@@ -349,6 +356,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ShowPropertiesCommand.NotifyCanExecuteChanged();
         ToggleSlideshowCommand.NotifyCanExecuteChanged();
         ToggleCloneDisplayCommand.NotifyCanExecuteChanged();
+        TogglePictureInPictureCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsFullScreenChanged(bool value)
@@ -358,7 +366,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     }
     partial void OnStatusTextChanged(string value) => OnPropertyChanged(nameof(ShowFullscreenInfo));
     partial void OnHasItemsChanged(bool value) => OnPropertyChanged(nameof(ShowThumbnailStrip));
-    partial void OnCurrentContentChanged(object? value) => OnPropertyChanged(nameof(ShowWindowNavArrows));
+    partial void OnCurrentContentChanged(object? value)
+    {
+        OnPropertyChanged(nameof(ShowWindowNavArrows));
+        TogglePictureInPictureCommand.NotifyCanExecuteChanged();
+    }
     partial void OnChromeVisibleChanged(bool value)
     {
         OnPropertyChanged(nameof(ShowWindowNavArrows));
@@ -367,6 +379,67 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     private bool _disposed;
     private IDisposable? _pendingDisposal; // старый контент, ждущий отложенного Background-Dispose
+
+    public bool CanTogglePictureInPicture =>
+        CurrentContent is VideoViewerViewModel || _activePipWindow != null;
+
+    [RelayCommand(CanExecute = nameof(CanTogglePictureInPicture))]
+    private void TogglePictureInPicture()
+    {
+        if (_activePipWindow != null)
+        {
+            RestorePictureInPicture();
+            return;
+        }
+
+        if (CurrentContent is not VideoViewerViewModel videoVm) return;
+
+        _pipSourceVm = videoVm;
+        videoVm.EnterPictureInPicture(
+            () =>
+            {
+                var window = _pipFactory(videoVm);
+                _activePipWindow = window;
+                window.RestoreRequested += (_, _) =>
+                {
+                    if (_activePipWindow == window) RestorePictureInPicture();
+                };
+                window.CloseRequested += (_, _) =>
+                {
+                    if (_activePipWindow == window) ClosePictureInPicture();
+                };
+                return window;
+            },
+            player =>
+            {
+                if (_pipSourceVm == null) return;
+                _pipSourceVm.RestoreFromPictureInPicture(player);
+                CurrentContent = _pipSourceVm;
+                _activePipWindow = null;
+                _pipSourceVm = null;
+                RefreshCommandStates();
+            });
+
+        CurrentContent = new PictureInPicturePlaceholderViewModel(
+            onRestore: RestorePictureInPicture,
+            onClose: ClosePictureInPicture);
+        RefreshCommandStates();
+    }
+
+    private void RestorePictureInPicture()
+    {
+        if (_activePipWindow == null || _pipSourceVm == null) return;
+        _activePipWindow.RaiseRestore();
+    }
+
+    private void ClosePictureInPicture()
+    {
+        if (_activePipWindow == null) return;
+        _activePipWindow.Close();
+        _activePipWindow = null;
+        _pipSourceVm = null;
+        RefreshCommandStates();
+    }
 
     public void Dispose()
     {
@@ -383,6 +456,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // (быстрая навигация видео→фото + закрытие) — освобождаем синхронно ДО выгрузки LibVLC.
         _pendingDisposal?.Dispose();
         _pendingDisposal = null;
+
+        _activePipWindow?.Close();
+        _activePipWindow = null;
+        _pipSourceVm = null;
 
         if (CurrentContent is IDisposable disposable)
         {
