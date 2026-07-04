@@ -45,11 +45,18 @@ public sealed partial class MainViewModel
             // Поднимаем чёрный cover ДО остановки: в полноэкранном режиме StopAndRelease очищает
             // нативное HWND LibVLC, и его светлый фон на секунду заливает весь экран. Cover в
             // оверлее ForegroundWindow скроет этот промежуток до SwitchTo/переключения.
-            if (cur.IsVideo && CurrentContent is VideoViewerViewModel videoVm)
+            if (cur.IsVideo)
             {
-                videoVm.IsBuffering = true;
-                videoVm.StopAndRelease();
-                await Task.Delay(250);
+                if (_pipSourceVm?.Item.FullPath == cur.FullPath)
+                {
+                    ClosePictureInPicture();
+                }
+                else if (CurrentContent is VideoViewerViewModel videoVm)
+                {
+                    videoVm.IsBuffering = true;
+                    videoVm.StopAndRelease();
+                    await Task.Delay(250);
+                }
             }
 
             ImageViewerViewModel? imageVm = null;

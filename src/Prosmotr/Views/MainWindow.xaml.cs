@@ -88,6 +88,7 @@ public partial class MainWindow : FluentWindow
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        _vm.Dispose();
         base.OnClosing(e);
         if (!e.Cancel)
         {

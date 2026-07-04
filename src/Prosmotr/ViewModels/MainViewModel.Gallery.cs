@@ -33,6 +33,11 @@ public sealed partial class MainViewModel
     /// <summary>Открыть путь (файл или папку), построить галерею и перейти к нему.</summary>
     public async Task OpenPathAsync(string path)
     {
+        if (_activePipWindow != null)
+        {
+            ClosePictureInPicture();
+        }
+
         _openCts?.Cancel();
         _openCts?.Dispose();
         _openCts = new CancellationTokenSource();
