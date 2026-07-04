@@ -111,6 +111,11 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     /// <summary>Показывать боковые кнопки перехода к пред./след. файлу (есть больше одного файла).</summary>
     [ObservableProperty] private bool _showFileNavigation;
 
+    /// <summary>Можно ли показывать мини-таймлайн при скрытой панели управления.
+    /// Учитывает настройку ShowMiniTimeline и порог по длительности видео.
+    /// Конкретная видимость в текущий момент управляется VideoViewerView.</summary>
+    [ObservableProperty] private bool _canShowMiniTimeline;
+
     /// <summary>Идёт загрузка первого кадра (старт или переключение видео). View показывает
     /// чёрный cover поверх нативного HWND LibVLC, чтобы скрыть его светлый фон (белый квадрат),
     /// мелькающий до отрисовки первого кадра. false — первый кадр реально обновился (TimeChanged
@@ -153,6 +158,8 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         p.EncounteredError += OnError;
         p.TimeChanged += OnTimeChanged;
         p.LengthChanged += OnLengthChanged;
+
+        _settings.SettingsChanged += OnSettingsChanged;
 
         // Свежий VM вот-вот начнёт загрузку: сразу отмечаем «буферизацию», чтобы View показал
         // чёрный cover ещё до первого OnLoaded/Start (и скрыл белый фон нативного HWND).
@@ -604,7 +611,12 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
 
     private void OnLengthChanged(object? sender, MediaPlayerLengthChangedEventArgs e) =>
-        OnUi(() => { if (!_disposed) LengthMs = e.Length; });
+        OnUi(() =>
+        {
+            if (_disposed) return;
+            LengthMs = e.Length;
+            UpdateCanShowMiniTimeline();
+        });
 
     private void SavePosition()
     {
@@ -665,6 +677,20 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         });
     }
 
+    private void OnSettingsChanged(object? sender, EventArgs e)
+    {
+        OnUi(UpdateCanShowMiniTimeline);
+    }
+
+    private void UpdateCanShowMiniTimeline()
+    {
+        if (_disposed) return;
+        var thresholdMs = _settings.Settings.MiniTimelineThresholdMinutes * 60000L;
+        CanShowMiniTimeline = _settings.Settings.ShowMiniTimeline
+                              && LengthMs > 0
+                              && LengthMs < thresholdMs;
+    }
+
     private static void OnUi(Action action)
     {
         var app = Application.Current;
@@ -695,6 +721,8 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         p.EncounteredError -= OnError;
         p.TimeChanged -= OnTimeChanged;
         p.LengthChanged -= OnLengthChanged;
+
+        _settings.SettingsChanged -= OnSettingsChanged;
 
         _seekCooldown.Stop();
         _stepThrottle.Stop();
