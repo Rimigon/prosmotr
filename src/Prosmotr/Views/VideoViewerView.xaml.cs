@@ -479,6 +479,8 @@ public partial class VideoViewerView : UserControl
 
         if (main != null) MediaContextMenu.AddNavigation(items, main);
 
+        items.Add(MediaContextMenu.Item("Окно в окне", () => _mainVm?.TogglePictureInPictureCommand.Execute(null),
+            icon: Wpf.Ui.Controls.SymbolRegular.WindowAd20));
         items.Add(new Separator());
 
         var audio = new MenuItem { Header = "Аудиодорожка", Icon = new Wpf.Ui.Controls.SymbolIcon { Symbol = Wpf.Ui.Controls.SymbolRegular.MusicNote124 } };
@@ -514,6 +516,11 @@ public partial class VideoViewerView : UserControl
         WeakReferenceMessenger.Default.Send(new NavigateFileMessage(1));
 
     private void OnFullScreenClick(object sender, RoutedEventArgs e) => ToggleFullScreen();
+    private void OnPictureInPictureClick(object sender, RoutedEventArgs e)
+    {
+        AppLog.Write($"VideoViewerView.OnPictureInPictureClick: _mainVm={_mainVm != null}");
+        _mainVm?.TogglePictureInPictureCommand.Execute(null);
+    }
     private void OnCloneDisplayClick(object sender, RoutedEventArgs e)
     {
         AppLog.Write($"VideoViewerView.OnCloneDisplayClick: _mainVm={_mainVm != null}, CanToggleClone={_mainVm?.CanToggleClone}");

@@ -325,6 +325,13 @@ public partial class MainWindow : FluentWindow
                 if (_vm.ToggleCloneDisplayCommand.CanExecute(null))
                     _vm.ToggleCloneDisplayCommand.Execute(null);
                 return true;
+            case Key.P:
+                if (_vm.TogglePictureInPictureCommand.CanExecute(null))
+                {
+                    _vm.TogglePictureInPictureCommand.Execute(null);
+                    return true;
+                }
+                return false;
             case Key.Escape:
                 if (_vm.IsFullScreen) { _vm.ExitFullScreenCommand.Execute(null); return true; }
                 return false;

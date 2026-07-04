@@ -204,8 +204,15 @@
                             <ui:SymbolIcon Symbol="FullScreenMaximize24" Foreground="White" />
                         </ui:Button>
 
+                        <!-- Picture-in-Picture -->
+                        <ui:Button Grid.Column="12" Appearance="Transparent" Click="OnPictureInPictureClick"
+                                   ToolTip="Окно в окне (P)"
+                                   AutomationProperties.Name="Окно в окне">
+                            <ui:SymbolIcon Symbol="WindowAd20" Foreground="White" />
+                        </ui:Button>
+
                         <!-- Дублирование экрана -->
-                        <ui:Button x:Name="CloneDisplayButton" Grid.Column="12" Appearance="Transparent"
+                        <ui:Button x:Name="CloneDisplayButton" Grid.Column="13" Appearance="Transparent"
                                    Click="OnCloneDisplayClick"
                                    ToolTip="Дублировать на экран (F12)"
                                    Visibility="Collapsed"
