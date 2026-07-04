@@ -215,6 +215,22 @@
                     </Grid>
                 </Border>
 
+                <!-- Мини-таймлайн: тонкий прогресс при скрытой панели управления.
+                     IsHitTestVisible=False, чтобы клики проходили на ClickArea (пауза/полный экран).
+                     Видимостью управляет code-behind (UpdateChromeVisibility). -->
+                <ProgressBar x:Name="MiniTimeline"
+                            Grid.Row="1"
+                            VerticalAlignment="Bottom"
+                            HorizontalAlignment="Stretch"
+                            Height="4"
+                            Minimum="0"
+                            Maximum="{Binding LengthMs}"
+                            Value="{Binding PositionMs}"
+                            Background="#55000000"
+                            Foreground="White"
+                            IsHitTestVisible="False"
+                            Visibility="Collapsed" />
+
                 <!-- Чёрный cover на время загрузки первого кадра (старт/переключение видео):
                      нативное Win32-окно LibVLC (HwndHost, класс "static") до отрисовки первого
                      кадра закрашивается своим светлым фоном — отсюда белый квадрат при смене
