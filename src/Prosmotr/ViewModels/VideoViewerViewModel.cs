@@ -27,7 +27,7 @@ public sealed record TrackChoice(int Id, string Name, bool IsCurrent);
 public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 {
     private static readonly float[] Rates =
-        { 0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f, 5f };
+        { 0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f };
 
     private readonly VideoPlaybackService _playback;
     private readonly ISettingsService _settings;
@@ -223,9 +223,11 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         }
 
         // Скорость: глобальная по умолчанию либо запомненная для файла.
-        _pendingRate = _settings.Settings.DefaultPlaybackRate;
+        // Защита от устаревших/недопустимых значений (раньше максимум был 5×,
+        // но LibVLC теряет звук выше 4× — см. AOUT_MAX_INPUT_RATE).
+        _pendingRate = ClampRate(_settings.Settings.DefaultPlaybackRate);
         if (_settings.Settings.RememberRatePerFile && stored?.Rate is > 0)
-            _pendingRate = stored.Rate!.Value;
+            _pendingRate = ClampRate(stored.Rate!.Value);
 
         LoadAndPlayDeferred(startMs);
     }
@@ -508,20 +510,28 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
     private void ApplyRate(float value, bool flashBadge)
     {
-        _pendingRate = value;
-        _playback.Rate = value;
-        Rate = value;
-        RateText = FormatRate(value);
+        var clamped = ClampRate(value);
+        _pendingRate = clamped;
+        _playback.Rate = clamped;
+        Rate = clamped;
+        RateText = FormatRate(clamped);
 
         // Синхронизируем выбранный пункт ComboBox без рекурсии.
         _suppressRateSelect = true;
-        SelectedRate = AvailableRates.FirstOrDefault(o => Math.Abs(o.Value - value) < 0.001f);
+        SelectedRate = AvailableRates.FirstOrDefault(o => Math.Abs(o.Value - clamped) < 0.001f);
         _suppressRateSelect = false;
 
         if (_settings.Settings.RememberRatePerFile)
             SavePosition();
 
         if (flashBadge) _ = FlashRateBadgeAsync(); // fire-and-forget
+    }
+
+    private float ClampRate(float value)
+    {
+        var min = Rates[0];
+        var max = Rates[Rates.Length - 1];
+        return Math.Clamp(value, min, max);
     }
 
     private async Task FlashRateBadgeAsync()

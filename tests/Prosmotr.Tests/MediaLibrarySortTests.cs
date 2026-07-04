@@ -60,9 +60,7 @@ public sealed class MediaLibrarySortTests
     [Fact]
     public void Sort_ByDuration_VideosByDuration_PhotosBySize()
     {
-        // Видео — по длительности (мс), фото — по размеру (байты). В реальных файлах
-        // размер фото (мегабайты) > длительность видео (тысячи мс), поэтому по возрастанию
-        // видео идут раньше фото; внутри каждого типа — по своему ключу.
+        // По возрастанию: сначала фото (по размеру файла), затем видео (по длительности).
         var items = new[]
         {
             Item("v_long.mp4",  size: 9_000_000, duration: 60_000, type: MediaType.Video),
@@ -71,13 +69,14 @@ public sealed class MediaLibrarySortTests
             Item("p_small.jpg", size: 500_000,   type: MediaType.Image),
         };
         var sorted = _svc.Sort(items, new SortSpec(SortField.Duration, false));
-        Assert.Equal(new[] { "v_short.mp4", "v_long.mp4", "p_small.jpg", "p_big.jpg" },
+        Assert.Equal(new[] { "p_small.jpg", "p_big.jpg", "v_short.mp4", "v_long.mp4" },
             sorted.Select(i => i.FileName));
     }
 
     [Fact]
     public void Sort_ByDuration_Descending_ReversesOrder()
     {
+        // По убыванию: сначала видео (по длительности), затем фото (по размеру файла).
         var items = new[]
         {
             Item("v_long.mp4",  size: 9_000_000, duration: 60_000, type: MediaType.Video),
@@ -86,7 +85,7 @@ public sealed class MediaLibrarySortTests
             Item("p_small.jpg", size: 500_000,   type: MediaType.Image),
         };
         var sorted = _svc.Sort(items, new SortSpec(SortField.Duration, true));
-        Assert.Equal(new[] { "p_big.jpg", "p_small.jpg", "v_long.mp4", "v_short.mp4" },
+        Assert.Equal(new[] { "v_long.mp4", "v_short.mp4", "p_big.jpg", "p_small.jpg" },
             sorted.Select(i => i.FileName));
     }
 

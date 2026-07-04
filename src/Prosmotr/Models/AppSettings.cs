@@ -7,7 +7,7 @@ public sealed class AppSettings
 {
     // --- Видео ---
     /// <summary>Глобальная скорость воспроизведения по умолчанию для всех новых видео.</summary>
-    [Range(0.25, 5.0)]
+    [Range(0.25, 4.0)]
     public float DefaultPlaybackRate { get; set; } = 1.0f;
     /// <summary>Запоминать последнюю скорость отдельно для каждого файла.</summary>
     public bool RememberRatePerFile { get; set; } = false;

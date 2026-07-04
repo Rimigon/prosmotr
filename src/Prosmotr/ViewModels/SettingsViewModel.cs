@@ -20,7 +20,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     public IReadOnlyList<AppTheme> Themes { get; } = new[] { AppTheme.System, AppTheme.Light, AppTheme.Dark };
     public IReadOnlyList<float> PlaybackRates { get; } =
-        new[] { 0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f, 5f };
+        new[] { 0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f };
     public IReadOnlyList<ThumbnailStripPosition> StripPositions { get; } =
         new[] { ThumbnailStripPosition.Bottom, ThumbnailStripPosition.Left };
 

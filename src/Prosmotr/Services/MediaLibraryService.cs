@@ -204,8 +204,10 @@ public sealed class MediaLibraryService : IMediaLibraryService
                 SortField.DateModified => a.LastWriteTimeUtc.CompareTo(b.LastWriteTimeUtc),
                 SortField.DateCreated => a.CreationTimeUtc.CompareTo(b.CreationTimeUtc),
                 SortField.Type => string.Compare(a.Extension, b.Extension, StringComparison.OrdinalIgnoreCase),
-                // Видео — по длительности, фото — по размеру файла (fallback).
-                SortField.Duration => DurationKey(a).CompareTo(DurationKey(b)),
+                // Видео и фото сортируются раздельно: по возрастанию — фото (по размеру),
+                // затем видео (по длительности); по убыванию — наоборот. Внутри каждой
+                // группы — по своему ключу в заданном направлении.
+                SortField.Duration => CompareDuration(a, b),
                 _ => NaturalStringComparer.Instance.Compare(a.FileName, b.FileName)
             };
             if (cmp == 0 && sort.Field != SortField.Name)
@@ -214,12 +216,17 @@ public sealed class MediaLibraryService : IMediaLibraryService
         };
     }
 
-    /// <summary>Ключ сортировки «по продолжительности»: для видео — длительность,
-    /// для фото — размер файла. Масштабы разные (мс vs байты), поэтому в смешанной
-    /// галерее видео группируются раньше фото (по возрастанию) — это ожидаемо: единого
-    /// измеримого «размера» у фото и видео нет, пользователь хочет фото-по-размеру
-    /// и видео-по-длительности раздельно.</summary>
-    private static long DurationKey(MediaItem x) => x.IsVideo ? x.DurationMs : x.FileSizeBytes;
+    private static int CompareDuration(MediaItem a, MediaItem b)
+    {
+        int groupA = a.IsVideo ? 1 : 0;
+        int groupB = b.IsVideo ? 1 : 0;
+        if (groupA != groupB)
+            return groupA.CompareTo(groupB);
+
+        long keyA = a.IsVideo ? a.DurationMs : a.FileSizeBytes;
+        long keyB = b.IsVideo ? b.DurationMs : b.FileSizeBytes;
+        return keyA.CompareTo(keyB);
+    }
 
     private static void TryFillMetadata(MediaItem item)
     {

@@ -8,13 +8,33 @@
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance vm:ThumbnailStripViewModel}">
 
+    <UserControl.Resources>
+        <!-- Стиль бегунка скроллбара ленты: ровные одинаковые скругления,
+             яркий акцентный фон, чтобы бегунок был хорошо виден. -->
+        <Style x:Key="ThumbnailScrollThumbStyle" TargetType="Thumb">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Opacity" Value="0.95" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <ListBox x:Name="List"
              ItemsSource="{Binding Items}"
              SelectedItem="{Binding Selected, Mode=TwoWay}"
              Background="Transparent" BorderThickness="0"
              ScrollViewer.HorizontalScrollBarVisibility="Auto"
              ScrollViewer.VerticalScrollBarVisibility="Disabled"
-             ScrollViewer.CanContentScroll="True"
              VirtualizingPanel.IsVirtualizing="True"
              VirtualizingPanel.VirtualizationMode="Recycling"
              HorizontalContentAlignment="Stretch">

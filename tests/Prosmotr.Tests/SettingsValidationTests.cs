@@ -16,9 +16,27 @@ public sealed class SettingsValidationTests
     }
 
     [Fact]
+    public void FormerlyAllowedFiveRate_IsReplacedWithDefault()
+    {
+        // Раньше максимум был 5.0; теперь LibVLC теряет звук выше 4×,
+        // поэтому 5.0 должно считаться невалидным.
+        var s = new AppSettings { DefaultPlaybackRate = 5f };
+        SettingsService.ValidateAndFix(s);
+        Assert.Equal(new AppSettings().DefaultPlaybackRate, s.DefaultPlaybackRate);
+    }
+
+    [Fact]
+    public void FourRate_IsStillValid()
+    {
+        var s = new AppSettings { DefaultPlaybackRate = 4f };
+        SettingsService.ValidateAndFix(s);
+        Assert.Equal(4f, s.DefaultPlaybackRate);
+    }
+
+    [Fact]
     public void OutOfRangePlaybackRate_ReplacedWithDefault()
     {
-        var s = new AppSettings { DefaultPlaybackRate = 99f }; // вне [0.25, 5.0]
+        var s = new AppSettings { DefaultPlaybackRate = 99f }; // вне [0.25, 4.0]
         SettingsService.ValidateAndFix(s);
         Assert.Equal(new AppSettings().DefaultPlaybackRate, s.DefaultPlaybackRate);
     }

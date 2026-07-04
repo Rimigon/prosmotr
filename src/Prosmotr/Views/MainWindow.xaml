@@ -178,7 +178,7 @@
                                       Visibility="{Binding DataContext.ShowThumbnailStrip,
                                                    RelativeSource={RelativeSource AncestorType=Window},
                                                    Converter={StaticResource BoolToVis}}"
-                                      Height="92" />
+                                      Height="112" />
 
             <!-- Уведомления (свой тост; для фото/пустого экрана — поверх контента сверху по центру) -->
             <ctl:ToastView Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Grid.ColumnSpan="2" />
