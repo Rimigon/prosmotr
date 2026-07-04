@@ -83,6 +83,10 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     private readonly DispatcherTimer _stepThrottle;
     private int _pendingStepCount;
 
+    // Picture-in-Picture: окно, в которое временно перемещается плеер.
+    private Views.PictureInPictureWindow? _pipWindow;
+    private Action<MediaPlayer>? _pipRestoreCallback;
+
     public MediaItem Item { get; private set; }
     public MediaPlayer Player => _playback.Player;
     public IReadOnlyList<RateOption> AvailableRates { get; }
@@ -110,6 +114,9 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
     /// <summary>Показывать боковые кнопки перехода к пред./след. файлу (есть больше одного файла).</summary>
     [ObservableProperty] private bool _showFileNavigation;
+
+    /// <summary>Текущее видео воспроизводится в отдельном окне Picture-in-Picture.</summary>
+    [ObservableProperty] private bool _isPictureInPicture;
 
     /// <summary>Можно ли показывать мини-таймлайн при скрытой панели управления.
     /// Учитывает настройку ShowMiniTimeline и порог по длительности видео.
@@ -453,6 +460,68 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         _playback.StopAndRelease();
     }
 
+    /// <summary>
+    /// Move the current playback into a floating Picture-in-Picture window.
+    /// The MediaPlayer is detached from the main VideoView and attached to the PiP window.
+    /// </summary>
+    public void EnterPictureInPicture(Func<Views.PictureInPictureWindow> createWindow, Action<MediaPlayer> onRestore)
+    {
+        if (_disposed || IsPictureInPicture) return;
+
+        _pipRestoreCallback = onRestore;
+        var player = _playback.Player;
+
+        var window = createWindow();
+        _pipWindow = window;
+
+        // Cover the main video area before detaching; the main view will hide the player.
+        IsBuffering = true;
+        IsPictureInPicture = true;
+
+        var app = Application.Current;
+        if (app != null)
+        {
+            app.Dispatcher.BeginInvoke(() =>
+            {
+                window.ShowFor(this, player);
+            }, DispatcherPriority.Render);
+        }
+        else
+        {
+            window.ShowFor(this, player);
+        }
+
+        window.RestoreRequested += (_, _) =>
+        {
+            var p = window.DetachPlayer();
+            if (p != null) onRestore(p);
+            IsPictureInPicture = false;
+            _pipWindow = null;
+            window.Close();
+        };
+
+        window.CloseRequested += (_, _) =>
+        {
+            // User closed PiP without restoring: stop playback and release the player.
+            var p = window.DetachPlayer();
+            p?.Stop();
+            IsPictureInPicture = false;
+            _pipWindow = null;
+            window.Close();
+        };
+    }
+
+    /// <summary>Reattach a player returned from PiP mode to this VM.</summary>
+    public void RestoreFromPictureInPicture(MediaPlayer player)
+    {
+        if (_disposed) return;
+        IsPictureInPicture = false;
+        _pipWindow = null;
+        // The main view will attach the player back to its VideoView on DataContextChanged/OnLoaded.
+        // We raise IsBuffering so the cover hides any white flicker during reattach.
+        IsBuffering = true;
+    }
+
     /// <summary>Текущие аудиодорожки видео (для меню кнопки звука).</summary>
     public IReadOnlyList<TrackChoice> GetAudioTracks()
     {
@@ -722,6 +791,10 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         // resume-запись, которую Delete уже убрал (_positions.Remove).
         if (File.Exists(Item.FullPath)) SavePosition();
         _disposed = true;
+
+        _pipWindow?.Close();
+        _pipWindow = null;
+        _pipRestoreCallback = null;
 
         var p = _playback.Player;
         p.Playing -= OnPlaying;
