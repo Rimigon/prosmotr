@@ -51,6 +51,16 @@ public sealed class NullToVisibilityConverter : IValueConverter
         Binding.DoNothing;
 }
 
+/// <summary>Не пустая строка → Visible, иначе Collapsed.</summary>
+public sealed class StringNotEmptyToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type t, object? p, CultureInfo c) =>
+        !string.IsNullOrEmpty(value as string) ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object? value, Type t, object? p, CultureInfo c) =>
+        throw new NotSupportedException();
+}
+
 /// <summary>Миллисекунды (double) → «m:ss» или «h:mm:ss».</summary>
 public sealed class MillisecondsToTimeConverter : IValueConverter
 {

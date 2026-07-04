@@ -44,6 +44,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private bool _isSlideshowActive;
     [ObservableProperty] private bool _cloneDisplayActive;
     [ObservableProperty] private string _statusText = string.Empty;
+    [ObservableProperty] private string _folderSummaryText = string.Empty;
     [ObservableProperty] private string _currentFileName = "Просмотр";
 
     [ObservableProperty] private SortField _selectedSortField = SortField.Name;
@@ -181,6 +182,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             // меняется (файл переехал) → счётчик «N из M» в статусе/инфо-плашке устаревал.
             // UpdateStatus идемпотентен, дублирование с UpdateCurrentContent безвредно.
             UpdateStatus();
+            UpdateFolderSummary();
             if (!HasItems && IsSlideshowActive)
             {
                 _slideshowTimer.Stop();
@@ -296,6 +298,41 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             CurrentFileName = cur.FileName;
             StatusText = $"{FileSizeConverter.Format(cur.FileSizeBytes)} · {cur.FileName} — {_nav.CurrentIndex + 1} из {_nav.Items.Count}";
         }
+    }
+
+    private void UpdateFolderSummary()
+    {
+        if (_nav.Items.Count == 0)
+        {
+            FolderSummaryText = string.Empty;
+            return;
+        }
+
+        int images = 0, videos = 0, animated = 0;
+        foreach (var item in _nav.Items)
+        {
+            switch (item.MediaType)
+            {
+                case MediaType.Image: images++; break;
+                case MediaType.Video: videos++; break;
+                case MediaType.AnimatedImage: animated++; break;
+            }
+        }
+
+        FolderSummaryText = BuildFolderSummaryText(images, videos, animated);
+    }
+
+    public static string BuildFolderSummaryText(int imageCount, int videoCount, int animatedCount)
+    {
+        if (imageCount == 0 && videoCount == 0 && animatedCount == 0)
+            return string.Empty;
+
+        var parts = new List<string>(3);
+        if (imageCount > 0) parts.Add($"{imageCount} фото");
+        if (videoCount > 0) parts.Add($"{videoCount} видео");
+        if (animatedCount > 0) parts.Add($"{animatedCount} GIF");
+
+        return string.Join(", ", parts);
     }
 
     private EmptyStateViewModel CreateEmptyState() =>

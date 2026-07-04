@@ -54,6 +54,7 @@
     <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
     <conv:BoolAndToVisibilityConverter x:Key="BoolAndToVis" />
     <conv:NullToVisibilityConverter x:Key="NullToVis" />
+    <conv:StringNotEmptyToVisibilityConverter x:Key="StringNotEmptyToVis" />
     <conv:MillisecondsToTimeConverter x:Key="MsToTime" />
     <conv:PlaybackRateToStringConverter x:Key="RateToString" />
     <conv:ThemeToStringConverter x:Key="ThemeToString" />

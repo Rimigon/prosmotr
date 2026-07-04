@@ -90,10 +90,16 @@
                     </ui:Button>
                 </StackPanel>
 
-                <!-- Центр: статус -->
-                <TextBlock Grid.Column="1" Text="{Binding StatusText}" Opacity="0.75"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" />
+                <!-- Центр: статус + сводка по папке -->
+                <StackPanel Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding StatusText}" Opacity="0.75"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding FolderSummaryText}" Opacity="0.55" FontSize="12"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Visibility="{Binding FolderSummaryText, Converter={StaticResource StringNotEmptyToVis}}" />
+                </StackPanel>
 
                 <!-- Справа: действия -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
@@ -155,7 +161,12 @@
                     Background="#D91A1A1A" CornerRadius="6" Padding="14,6"
                     IsHitTestVisible="False"
                     Visibility="{Binding ShowFullscreenInfo, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="{Binding StatusText}" Foreground="White" FontSize="13" Opacity="0.9" />
+                <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                    <TextBlock Text="{Binding StatusText}" Foreground="White" FontSize="13" Opacity="0.9" />
+                    <TextBlock Text="{Binding FolderSummaryText}" Foreground="White" FontSize="12" Opacity="0.75"
+                               HorizontalAlignment="Center"
+                               Visibility="{Binding FolderSummaryText, Converter={StaticResource StringNotEmptyToVis}}" />
+                </StackPanel>
             </Border>
 
             <!-- Стрелки навигации (собственный стиль — видны во всех состояниях) -->

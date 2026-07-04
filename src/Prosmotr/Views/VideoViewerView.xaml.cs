@@ -673,6 +673,7 @@ public partial class VideoViewerView : UserControl
     {
         if (e.PropertyName == nameof(MainViewModel.IsFullScreen)
             || e.PropertyName == nameof(MainViewModel.StatusText)
+            || e.PropertyName == nameof(MainViewModel.FolderSummaryText)
             || e.PropertyName == nameof(MainViewModel.ShowFullscreenInfo))
         {
             UpdateInfo();
@@ -690,7 +691,13 @@ public partial class VideoViewerView : UserControl
                     && _controlsShown
                     && _vm?.IsBuffering != true
                     && !string.IsNullOrEmpty(_mainVm.StatusText);
-        InfoText.Text = _mainVm?.StatusText ?? string.Empty;
+
+        var summary = _mainVm?.FolderSummaryText;
+        if (!string.IsNullOrEmpty(summary))
+            InfoText.Text = $"{_mainVm?.StatusText} · {summary}";
+        else
+            InfoText.Text = _mainVm?.StatusText ?? string.Empty;
+
         FullscreenInfoBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
