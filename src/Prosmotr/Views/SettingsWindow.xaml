@@ -138,6 +138,39 @@
                     </Grid>
                 </Border>
 
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Мини-таймлайн при скрытой панели" />
+                            <TextBlock Text="Тонкий индикатор прогресса внизу экрана, когда панель управления скрыта"
+                                       Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowMiniTimeline, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Показывать мини-таймлайн для видео до" />
+                            <TextBlock Text="{Binding MiniTimelineThresholdMinutes, StringFormat={}{0} мин.}"
+                                       Opacity="0.6" FontSize="12" />
+                        </StackPanel>
+                        <Slider Grid.Column="1" Width="160" VerticalAlignment="Center"
+                                Minimum="1" Maximum="120" TickFrequency="1" IsSnapToTickEnabled="True"
+                                IsEnabled="{Binding ShowMiniTimeline}"
+                                Value="{Binding MiniTimelineThresholdMinutes, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
                 <!-- УДАЛЕНИЕ -->
                 <TextBlock Text="Удаление" Style="{StaticResource Section}" />
 

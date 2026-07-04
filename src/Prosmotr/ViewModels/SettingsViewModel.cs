@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -75,6 +76,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private int _seekStepSeconds;
     [ObservableProperty] private bool _frameByFrameSeek;
     [ObservableProperty] private bool _arrowKeysSeekVideo;
+    [ObservableProperty] private bool _showMiniTimeline;
+    [ObservableProperty] private int _miniTimelineThresholdMinutes;
     [ObservableProperty] private bool _matchExplorerSort;
     [ObservableProperty] private bool _integrateShell;
     [ObservableProperty] private bool _isAssociationsRegistered;
@@ -115,6 +118,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
         SeekStepSeconds = s.SeekStepSeconds;
         FrameByFrameSeek = s.FrameByFrameSeek;
         ArrowKeysSeekVideo = s.ArrowKeysSeekVideo;
+        ShowMiniTimeline = s.ShowMiniTimeline;
+        MiniTimelineThresholdMinutes = s.MiniTimelineThresholdMinutes;
         MatchExplorerSort = s.MatchExplorerSort;
         IntegrateShell = s.IntegrateShell;
         ExitKey = IsAllowedKey(s.ExitKey) ? s.ExitKey : "End";
@@ -165,6 +170,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
         s.SeekStepSeconds = Math.Clamp(SeekStepSeconds, 1, 30); // согласовано с [Range] и слайдером
         s.FrameByFrameSeek = FrameByFrameSeek;
         s.ArrowKeysSeekVideo = ArrowKeysSeekVideo;
+        s.ShowMiniTimeline = ShowMiniTimeline;
+        s.MiniTimelineThresholdMinutes = Math.Clamp(MiniTimelineThresholdMinutes, 1, 120);
         s.MatchExplorerSort = MatchExplorerSort;
         s.IntegrateShell = IntegrateShell;
         s.ExitKey = ExitKey;
@@ -196,6 +203,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
     partial void OnSeekStepSecondsChanged(int value) => Commit();
     partial void OnFrameByFrameSeekChanged(bool value) => Commit();
     partial void OnArrowKeysSeekVideoChanged(bool value) => Commit();
+    partial void OnShowMiniTimelineChanged(bool value) => Commit(immediate: true);
+    partial void OnMiniTimelineThresholdMinutesChanged(int value) => Commit(immediate: true);
     partial void OnMatchExplorerSortChanged(bool value) => Commit();
     partial void OnExitKeyChanged(string value)
     {
