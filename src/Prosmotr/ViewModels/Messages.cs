@@ -8,3 +8,6 @@ public sealed record NavigateFileMessage(int Direction);
 
 /// <summary>Запрос переключения видимости элементов управления (панель, стрелки) для видео.</summary>
 public sealed record ToggleChromeMessage;
+
+/// <summary>Запрос переключения режима Picture-in-Picture для текущего видео.</summary>
+public sealed record TogglePictureInPictureMessage;

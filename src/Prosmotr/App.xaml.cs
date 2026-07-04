@@ -395,6 +395,12 @@ public partial class App : Application
             sp.GetRequiredService<IServiceProvider>()));
         services.AddTransient<SettingsWindow>();
         services.AddTransient<FilePropertiesWindow>();
+
+        // Picture-in-Picture
+        services.AddTransient<Func<VideoViewerViewModel, PictureInPictureWindow>>(sp =>
+            vm => new PictureInPictureWindow());
+        services.AddTransient<PictureInPictureViewModel>();
+        services.AddTransient<PictureInPicturePlaceholderViewModel>();
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
