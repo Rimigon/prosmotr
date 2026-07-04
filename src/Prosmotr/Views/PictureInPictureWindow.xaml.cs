@@ -20,7 +20,7 @@ public partial class PictureInPictureWindow : Window
         Overlay.MouseMove += OnOverlayMouseMove;
     }
 
-    public void ShowFor(VideoViewerViewModel sourceVm, LibVLCSharp.Shared.MediaPlayer player)
+    public void ShowFor(VideoViewerViewModel sourceVm, LibVLCSharp.Shared.MediaPlayer player, long resumeMs)
     {
         if (DataContext is PictureInPictureViewModel old) old.Dispose();
         var vm = new PictureInPictureViewModel(sourceVm);
@@ -28,17 +28,16 @@ public partial class PictureInPictureWindow : Window
         vm.RestoreRequested += OnRestoreRequested;
         vm.CloseRequested += OnCloseRequested;
         Show();
-        // VideoView (HwndHost) должен отрисовать нативный HWND ДО привязки плеера —
-        // иначе плеер не найдёт окно вывода и в PiP останется белый/чёрный экран.
+        // VideoView (HwndHost) должен отрисовать нативный HWND ДО загрузки дорожки —
+        // иначе плеер не найдёт окно вывода. Сначала привязываем MediaPlayer к этому VideoView,
+        // затем загружаем Media с позиции и запускаем.
         Dispatcher.BeginInvoke(() =>
         {
             PipVideo.MediaPlayer = player;
-            // Плеер мог потерять вывод при отсоединении от основного VideoView;
-            // принудительно запускаем/возобновляем отрисовку кадра.
-            if (!player.IsPlaying)
-                player.Play();
-            else
-                player.SetVideoTrack(player.VideoTrack);
+            var path = sourceVm.Item.FullPath;
+            var playback = sourceVm.PlaybackService;
+            playback.Load(path, resumeMs);
+            playback.Play();
         }, DispatcherPriority.Render);
         ShowPanel();
     }

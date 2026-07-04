@@ -37,6 +37,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
     private float _pendingRate = 1f;
     private bool _started;
+    private bool _resumeFromPip; // при восстановлении из PiP не перезагружаем Media, а делаем Stop/Play для перепривязки vout
     private bool _disposed;
     // На время переключения видео→видео подавляем SavePosition: асинхронные события
     // старого плеера (Stopped/TimeChanged) иначе запишут позицию под путём нового файла.
@@ -88,6 +89,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
     public MediaItem Item { get; private set; }
     public MediaPlayer Player => _playback.Player;
+    public VideoPlaybackService PlaybackService => _playback;
     public IReadOnlyList<RateOption> AvailableRates { get; }
 
     /// <summary>Максимум громкости (с усилением до 300 %).</summary>
@@ -183,7 +185,19 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     {
         if (_started || _disposed) return;
         _started = true;
-        BeginPlayback();
+        if (_resumeFromPip)
+        {
+            _resumeFromPip = false;
+            // Нативный vout привязан к HWND PiP-окна. Чтобы переключить вывод на основной
+            // VideoView, достаточно остановить и снова запустить плеер: vout пересоздастся
+            // для текущего HWND (уже привязанного в View), не теряя позицию и Media.
+            _playback.Stop();
+            _playback.Play();
+        }
+        else
+        {
+            BeginPlayback();
+        }
     }
 
     /// <summary>
@@ -468,7 +482,16 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         if (_disposed || IsPictureInPicture) return;
 
         IsPictureInPicture = true;
-        var player = _playback.Player;
+
+        // LibVLC привязывает MediaPlayer к HWND VideoView. Чтобы перенести плеер в другое
+        // окно, НЕ достаточно просто присвоить MediaPlayer новому VideoView: нативный vout
+        // остаётся привязанным к старому HWND и перекрашивает его в чёрный/белый цвет.
+        // Надёжный способ — полностью остановить и выгрузить Media, затем пересоздать её
+        // и подключить к плееру уже после того, как PiP-окно создало свой HWND.
+        // Позицию сохраняем, чтобы воспроизведение продолжилось с того же места.
+        var positionSnapshot = _playback.Time;
+        _playback.StopAndRelease();
+        IsBuffering = true;
 
         var window = createWindow();
         _pipWindow = window;
@@ -478,28 +501,27 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         {
             app.Dispatcher.BeginInvoke(() =>
             {
-                window.ShowFor(this, player);
+                window.ShowFor(this, _playback.Player, positionSnapshot);
             }, DispatcherPriority.Render);
         }
         else
         {
-            window.ShowFor(this, player);
+            window.ShowFor(this, _playback.Player, positionSnapshot);
         }
     }
 
-    /// <summary>Reattach a player returned from PiP mode to this VM.</summary>
     public void RestoreFromPictureInPicture(MediaPlayer player)
     {
         if (_disposed) return;
         IsPictureInPicture = false;
         _pipWindow = null;
-        // The main view will attach the player back to its VideoView on DataContextChanged/OnLoaded.
-        // We raise IsBuffering so the cover hides any white flicker during reattach.
+        // Сохраняем позицию, накопленную в PiP, чтобы при возврате не терять место.
+        SavePosition();
+        // View вызовет Start() заново после возврата в основное окно; сбрасываем guard,
+        // иначе BeginPlayback не отработает, и чёрный cover не снимется.
+        _started = false;
+        _resumeFromPip = true;
         IsBuffering = true;
-        // Плеер продолжает воспроизведение, но мог потерять видеовывод при отсоединении
-        // от PiP VideoView. Принудительно «пинаем» Play, чтобы кадр появился в основном окне.
-        if (!_playback.IsPlaying)
-            _playback.Play();
     }
 
     /// <summary>Текущие аудиодорожки видео (для меню кнопки звука).</summary>

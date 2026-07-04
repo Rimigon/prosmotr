@@ -139,6 +139,20 @@ public partial class VideoViewerView : UserControl
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (_vm == null) return;
+        // При восстановлении из PiP плеер уже инициализирован и дорожка загружена;
+        // не вызываем Start(), чтобы не начать воспроизведение заново.
+        if (_vm.IsPictureInPicture)
+        {
+            AttachMainVm(ResolveMainVm());
+            _miniTimeline = MiniTimeline;
+            Video.MediaPlayer = _vm.Player;
+            IsVisibleChanged -= OnVisibilityRestored;
+            IsVisibleChanged += OnVisibilityRestored;
+            UpdateCover();
+            UpdateCloneButton();
+            return;
+        }
+
         // Идемпотентная привязка: при reuse-сценарии OnDataContextChanged мог уже подписать
         // тот же _mainVm — без этого было два += против одного -= (утечка View через singleton).
         AttachMainVm(ResolveMainVm());
@@ -153,6 +167,18 @@ public partial class VideoViewerView : UserControl
         }), DispatcherPriority.Render);
         Dispatcher.BeginInvoke(new Action(FocusHostWindow), DispatcherPriority.Loaded);
         UpdateCloneButton();
+    }
+
+    private void OnVisibilityRestored(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is true && _vm is { IsPictureInPicture: true })
+        {
+            // Когда плейсхолдер заменяется на VideoViewerView, VideoView получает HWND
+            // и должен перехватить вывод плеера. Пока View была невидима, кадр мог
+            // остаться в PiP-окне; принудительно перезапускаем видеовывод.
+            Video.MediaPlayer = _vm.Player;
+            _vm.PlaybackService.Play();
+        }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -184,10 +210,13 @@ public partial class VideoViewerView : UserControl
         // При удалении View из дерева обычно останавливаем плеер и освобождаем Media,
         // чтобы нативное окно LibVLC не висело поверх WPF. ИСКЛЮЧЕНИЕ: вход в режим
         // Picture-in-Picture — плеер временно переносится в отдельное плавающее окно,
-        // поэтому останавливать/освобождать его нельзя, иначе в PiP останется белый/чёрный
-        // экран без медиа.
+        // поэтому останавливать/освобождать его нельзя. При этом сбрасываем MediaPlayer
+        // у основного VideoView, чтобы старый HWND не перехватывал вывод.
         if (_vm is { IsPictureInPicture: false })
             _vm?.StopAndRelease();
+        else
+            try { Video.MediaPlayer = null; } catch { }
+
         Detach();
     }
 
@@ -198,7 +227,10 @@ public partial class VideoViewerView : UserControl
             _vm.PropertyChanged -= OnVmPropertyChanged;
             _vm = null;
         }
-        try { Video.MediaPlayer = null; } catch { /* уже освобождён */ }
+        // Если идём в PiP, плеер используется в другом окне — не трогаем привязку здесь,
+        // чтобы не потерять MediaPlayer; иначе очищаем VideoView.
+        if (_vm is not { IsPictureInPicture: true })
+            try { Video.MediaPlayer = null; } catch { }
     }
 
     private void FocusHostWindow()
