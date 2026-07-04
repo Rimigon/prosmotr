@@ -38,15 +38,9 @@ public partial class PictureInPictureWindow : Window
             var path = sourceVm.Item.FullPath;
             var playback = sourceVm.PlaybackService;
             playback.Load(path, resumeMs);
-            if (wasPlaying)
-                playback.Play();
-            else
-            {
-                // Воспроизведение было на паузе: ставим флаг паузы до Play(),
-                // чтобы плеер стартовал в приостановленном состоянии на том же кадре.
+            playback.Play();
+            if (!wasPlaying)
                 playback.Pause();
-                playback.Play();
-            }
         }, DispatcherPriority.Render);
         ShowPanel();
     }
