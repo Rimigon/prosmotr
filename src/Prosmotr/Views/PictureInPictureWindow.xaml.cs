@@ -27,22 +27,42 @@ public partial class PictureInPictureWindow : Window
         DataContext = vm;
         vm.RestoreRequested += OnRestoreRequested;
         vm.CloseRequested += OnCloseRequested;
-        PipVideo.MediaPlayer = player;
         Show();
+        // VideoView (HwndHost) должен отрисовать нативный HWND ДО привязки плеера —
+        // иначе плеер не найдёт окно вывода и в PiP останется белый/чёрный экран.
+        Dispatcher.BeginInvoke(() =>
+        {
+            PipVideo.MediaPlayer = player;
+            // Плеер мог потерять вывод при отсоединении от основного VideoView;
+            // принудительно запускаем/возобновляем отрисовку кадра.
+            if (!player.IsPlaying)
+                player.Play();
+            else
+                player.SetVideoTrack(player.VideoTrack);
+        }, DispatcherPriority.Render);
         ShowPanel();
     }
 
     public LibVLCSharp.Shared.MediaPlayer? DetachPlayer()
     {
         var player = PipVideo.MediaPlayer;
-        try { PipVideo.MediaPlayer = null; } catch { }
+        PipVideo.MediaPlayer = null;
         return player;
     }
 
     public void RaiseRestore() => RestoreRequested?.Invoke(this, EventArgs.Empty);
 
-    private void OnRestoreRequested(object? sender, EventArgs e) => RestoreRequested?.Invoke(this, EventArgs.Empty);
-    private void OnCloseRequested(object? sender, EventArgs e) => CloseRequested?.Invoke(this, EventArgs.Empty);
+    private void OnRestoreRequested(object? sender, EventArgs e)
+    {
+        if (!_isClosed) RestoreRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnCloseRequested(object? sender, EventArgs e)
+    {
+        if (!_isClosed) CloseRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private bool _isClosed;
 
     public event EventHandler? RestoreRequested;
     public event EventHandler? CloseRequested;
@@ -89,6 +109,8 @@ public partial class PictureInPictureWindow : Window
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
+        _isClosed = true;
+        try { PipVideo.MediaPlayer = null; } catch { }
         if (DataContext is PictureInPictureViewModel vm) vm.Dispose();
         base.OnClosing(e);
     }

@@ -85,7 +85,6 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
     // Picture-in-Picture: окно, в которое временно перемещается плеер.
     private Views.PictureInPictureWindow? _pipWindow;
-    private Action<MediaPlayer>? _pipRestoreCallback;
 
     public MediaItem Item { get; private set; }
     public MediaPlayer Player => _playback.Player;
@@ -464,19 +463,15 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     /// Move the current playback into a floating Picture-in-Picture window.
     /// The MediaPlayer is detached from the main VideoView and attached to the PiP window.
     /// </summary>
-    public void EnterPictureInPicture(Func<Views.PictureInPictureWindow> createWindow, Action<MediaPlayer> onRestore)
+    public void EnterPictureInPicture(Func<Views.PictureInPictureWindow> createWindow)
     {
         if (_disposed || IsPictureInPicture) return;
 
-        _pipRestoreCallback = onRestore;
+        IsPictureInPicture = true;
         var player = _playback.Player;
 
         var window = createWindow();
         _pipWindow = window;
-
-        // Cover the main video area before detaching; the main view will hide the player.
-        IsBuffering = true;
-        IsPictureInPicture = true;
 
         var app = Application.Current;
         if (app != null)
@@ -490,25 +485,6 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         {
             window.ShowFor(this, player);
         }
-
-        window.RestoreRequested += (_, _) =>
-        {
-            var p = window.DetachPlayer();
-            if (p != null) onRestore(p);
-            IsPictureInPicture = false;
-            _pipWindow = null;
-            window.Close();
-        };
-
-        window.CloseRequested += (_, _) =>
-        {
-            // User closed PiP without restoring: stop playback and release the player.
-            var p = window.DetachPlayer();
-            p?.Stop();
-            IsPictureInPicture = false;
-            _pipWindow = null;
-            window.Close();
-        };
     }
 
     /// <summary>Reattach a player returned from PiP mode to this VM.</summary>
@@ -520,6 +496,10 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         // The main view will attach the player back to its VideoView on DataContextChanged/OnLoaded.
         // We raise IsBuffering so the cover hides any white flicker during reattach.
         IsBuffering = true;
+        // Плеер продолжает воспроизведение, но мог потерять видеовывод при отсоединении
+        // от PiP VideoView. Принудительно «пинаем» Play, чтобы кадр появился в основном окне.
+        if (!_playback.IsPlaying)
+            _playback.Play();
     }
 
     /// <summary>Текущие аудиодорожки видео (для меню кнопки звука).</summary>
@@ -794,7 +774,6 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
         _pipWindow?.Close();
         _pipWindow = null;
-        _pipRestoreCallback = null;
 
         var p = _playback.Player;
         p.Playing -= OnPlaying;

@@ -395,30 +395,35 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         if (CurrentContent is not VideoViewerViewModel videoVm) return;
 
         _pipSourceVm = videoVm;
-        videoVm.EnterPictureInPicture(
-            () =>
+        videoVm.EnterPictureInPicture(() =>
+        {
+            var window = _pipFactory(videoVm);
+            _activePipWindow = window;
+
+            window.RestoreRequested += (_, _) =>
             {
-                var window = _pipFactory(videoVm);
-                _activePipWindow = window;
-                window.RestoreRequested += (_, _) =>
-                {
-                    if (_activePipWindow == window) RestorePictureInPicture();
-                };
-                window.CloseRequested += (_, _) =>
-                {
-                    if (_activePipWindow == window) ClosePictureInPicture();
-                };
-                return window;
-            },
-            player =>
+                if (_activePipWindow != window) return;
+                RestorePictureInPictureWorker(window);
+            };
+
+            window.CloseRequested += (_, _) =>
             {
-                if (_pipSourceVm == null) return;
-                _pipSourceVm.RestoreFromPictureInPicture(player);
-                CurrentContent = _pipSourceVm;
+                if (_activePipWindow != window) return;
+                ClosePictureInPictureWorker(window);
+            };
+
+            window.Closed += (_, _) =>
+            {
+                // Fallback: если окно закрылось системно (Alt+F4) или мимо наших команд,
+                // просто чистим ссылки. Восстановление/остановку плеера уже сделал обработчик.
+                if (_activePipWindow != window) return;
                 _activePipWindow = null;
                 _pipSourceVm = null;
                 RefreshCommandStates();
-            });
+            };
+
+            return window;
+        });
 
         CurrentContent = new PictureInPicturePlaceholderViewModel(
             onRestore: RestorePictureInPicture,
@@ -429,15 +434,41 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private void RestorePictureInPicture()
     {
         if (_activePipWindow == null || _pipSourceVm == null) return;
-        _activePipWindow.RaiseRestore();
+        RestorePictureInPictureWorker(_activePipWindow);
+    }
+
+    private void RestorePictureInPictureWorker(PictureInPictureWindow window)
+    {
+        if (_pipSourceVm == null) return;
+        var player = window.DetachPlayer();
+        if (player != null)
+        {
+            _pipSourceVm.RestoreFromPictureInPicture(player);
+            CurrentContent = _pipSourceVm;
+        }
+        _activePipWindow = null;
+        _pipSourceVm = null;
+        window.Close();
+        RefreshCommandStates();
     }
 
     private void ClosePictureInPicture()
     {
-        if (_activePipWindow == null) return;
-        _activePipWindow.Close();
+        if (_activePipWindow == null || _pipSourceVm == null) return;
+        ClosePictureInPictureWorker(_activePipWindow);
+    }
+
+    private void ClosePictureInPictureWorker(PictureInPictureWindow window)
+    {
+        var player = window.DetachPlayer();
+        player?.Stop();
+        if (_pipSourceVm != null)
+        {
+            _pipSourceVm.IsPictureInPicture = false;
+            _pipSourceVm = null;
+        }
         _activePipWindow = null;
-        _pipSourceVm = null;
+        window.Close();
         RefreshCommandStates();
     }
 
