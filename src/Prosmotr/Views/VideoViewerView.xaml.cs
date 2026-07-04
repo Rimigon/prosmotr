@@ -29,6 +29,7 @@ public partial class VideoViewerView : UserControl
     private ContextMenu? _audioMenu;
     private ContextMenu? _subtitleMenu;
     private ContextMenu? _speedMenu;
+    private ProgressBar? _miniTimeline;
     private long _audioMenuClosedAt;
     private long _subtitleMenuClosedAt;
     private long _speedMenuClosedAt;
@@ -141,6 +142,7 @@ public partial class VideoViewerView : UserControl
         // Идемпотентная привязка: при reuse-сценарии OnDataContextChanged мог уже подписать
         // тот же _mainVm — без этого было два += против одного -= (утечка View через singleton).
         AttachMainVm(ResolveMainVm());
+        _miniTimeline = MiniTimeline; // FindName доступен после InitializeComponent
         UpdateCover(); // cover вверх до старта, чтобы не мелькал белый фон нативного HWND
         // Отрисовываем cover перед сменой Media/Play: сначала Render, потом уже плеер.
         Dispatcher.BeginInvoke(new Action(() =>
@@ -175,6 +177,7 @@ public partial class VideoViewerView : UserControl
         _speedMenu = null;
         _audioMenu = null;
         _subtitleMenu = null;
+        _miniTimeline = null;
 
         WeakReferenceMessenger.Default.Unregister<ToggleChromeMessage>(this);
         DetachMainVm();
@@ -232,8 +235,12 @@ public partial class VideoViewerView : UserControl
         {
             UpdateSideNav();
         }
-        else if (e.PropertyName == nameof(VideoViewerViewModel.IsBuffering))
+        else if (e.PropertyName == nameof(VideoViewerViewModel.IsBuffering)
+                 || e.PropertyName == nameof(VideoViewerViewModel.CanShowMiniTimeline)
+                 || e.PropertyName == nameof(VideoViewerViewModel.IsEnded)
+                 || e.PropertyName == nameof(VideoViewerViewModel.LengthMs))
         {
+            UpdateChromeVisibility();
             UpdateCover();
         }
     }
@@ -602,6 +609,15 @@ public partial class VideoViewerView : UserControl
     {
         bool show = _controlsShown && _vm?.IsBuffering != true;
         ControlBar.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+
+        // Мини-таймлайн: тонкий индикатор прогресса, когда основная панель скрыта.
+        bool showMini = !show
+                        && _vm?.IsBuffering != true
+                        && _vm?.IsEnded != true
+                        && _vm?.CanShowMiniTimeline == true;
+        if (_miniTimeline != null)
+            _miniTimeline.Visibility = showMini ? Visibility.Visible : Visibility.Collapsed;
+
         // Устанавливаем курсор на Overlay (а не на UserControl), чтобы он точно применялся
         // над областью видео внутри airspace LibVLCSharp.WPF.
         // Во время буферизации курсор оставляем видимым — переключение короткое, и скрывать
