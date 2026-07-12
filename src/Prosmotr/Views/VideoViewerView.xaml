@@ -44,6 +44,28 @@
                     <TextBlock Text="{Binding RateText}" Foreground="White" FontSize="28" FontWeight="SemiBold" />
                 </Border>
 
+                <!-- Индикатор смены громкости (как индикатор скорости) -->
+                <Border Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="#AA000000" CornerRadius="10" Padding="22,12"
+                        Visibility="{Binding ShowVolumeBadge, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal">
+                        <ui:SymbolIcon FontSize="28" Foreground="White" VerticalAlignment="Center">
+                            <ui:SymbolIcon.Style>
+                                <Style TargetType="ui:SymbolIcon">
+                                    <Setter Property="Symbol" Value="Speaker224" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsMuted}" Value="True">
+                                            <Setter Property="Symbol" Value="SpeakerMute24" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ui:SymbolIcon.Style>
+                        </ui:SymbolIcon>
+                        <TextBlock Text="{Binding VolumeBadgeText}" Foreground="White" FontSize="28"
+                                   FontWeight="SemiBold" VerticalAlignment="Center" Margin="10,0,0,0" />
+                    </StackPanel>
+                </Border>
+
                 <!-- Кнопка повтора по окончании -->
                 <ui:Button Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center"
                            Appearance="Primary" Command="{Binding TogglePlayCommand}"

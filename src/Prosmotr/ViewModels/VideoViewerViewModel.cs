@@ -111,6 +111,8 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private bool _isEnded;
     [ObservableProperty] private bool _hasError;
     [ObservableProperty] private bool _showRateBadge;
+    [ObservableProperty] private bool _showVolumeBadge;
+    [ObservableProperty] private string _volumeBadgeText = "100%";
     [ObservableProperty] private RateOption? _selectedRate;
 
     /// <summary>Показывать боковые кнопки перехода к пред./след. файлу (есть больше одного файла).</summary>
@@ -618,6 +620,16 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         ShowRateBadge = false;
     }
 
+    private async Task FlashVolumeBadgeAsync()
+    {
+        ShowVolumeBadge = true;
+        try { await Task.Delay(1200); } catch { /* Ignore */ }
+        ShowVolumeBadge = false;
+    }
+
+    private static string FormatVolumeBadge(int volume, bool muted)
+        => muted ? "Откл" : volume.ToString("0", CultureInfo.CurrentCulture) + "%";
+
     // --- Реакция на изменение наблюдаемых свойств ---
 
     partial void OnVolumeChanged(int value)
@@ -626,6 +638,9 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         _settings.Settings.LastVolume = value;
         _settings.SaveDebounced();
         OnPropertyChanged(nameof(IsBoosted));
+        // Плашка громкости — как индикатор смены скорости: показывает текущий уровень.
+        VolumeBadgeText = FormatVolumeBadge(value, IsMuted);
+        _ = FlashVolumeBadgeAsync();
     }
 
     partial void OnIsMutedChanged(bool value)
@@ -633,6 +648,9 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         _playback.Mute = value;
         _settings.Settings.LastMuted = value;
         _settings.SaveDebounced();
+        // Mute/Unmute тоже показываем плашкой («Откл» / текущая громкость).
+        VolumeBadgeText = FormatVolumeBadge(Volume, value);
+        _ = FlashVolumeBadgeAsync();
     }
 
     // --- События плеера (приходят из потока LibVLC — маршалим в UI) ---
