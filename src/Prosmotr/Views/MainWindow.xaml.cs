@@ -304,6 +304,16 @@ public partial class MainWindow : FluentWindow
                 else if (_vm.NextCommand.CanExecute(null))
                     _vm.NextCommand.Execute(null);
                 return true;
+            case Key.PageUp:
+                // Page Up — дублёр Ctrl+Z: восстановить последний удалённый файл из Корзины.
+                // Действует в любом контексте (фото/видео/пустой экран). Если Page Up назначен
+                // на Exit/ToggleChrome/FullScreen — сработает та настройка (проверяется выше).
+                if (_vm.RestoreLastDeleteCommand.CanExecute(null))
+                {
+                    _vm.RestoreLastDeleteCommand.Execute(null);
+                    return true;
+                }
+                return false;
             case Key.Z:
                 if (Keyboard.Modifiers == ModifierKeys.Control && _vm.RestoreLastDeleteCommand.CanExecute(null))
                 {

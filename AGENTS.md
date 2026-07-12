@@ -1,59 +1,7 @@
 # AGENTS.md
 
 > Автоматически поддерживаемая сводка контекста для AI-агентов.
-> Последнее обновление: 2026-07-12 15:42:47 UTC
-
-## Project Overview
-
-<!-- agents-md:auto:project-overview -->
-**Просмотр** — Нативное приложение в стиле «Фотографии» Windows 11, но быстрее и удобнее: единая галерея фото и видео, удобная навигация по папке, быстрое удаление в Корзину, полноценный видеоплеер с **глобальной скоростью воспроизведения** по умолчанию для всех видео.
-<!-- /agents-md:auto:project-overview -->
-
-## Tech Stack
-
-<!-- agents-md:auto:tech-stack -->
-Универсальный проект.
-<!-- /agents-md:auto:tech-stack -->
-
-## Setup Commands
-
-<!-- agents-md:auto:setup-commands -->
-- Добавьте команды установки и сборки вручную.
-<!-- /agents-md:auto:setup-commands -->
-
-## Development Workflow
-
-<!-- agents-md:auto:development-workflow -->
-- Опишите рабочий процесс вручную.
-<!-- /agents-md:auto:development-workflow -->
-
-## Testing Instructions
-
-<!-- agents-md:auto:testing-instructions -->
-- Команды тестирования не обнаружены — добавьте вручную.
-- Перед коммитом убедитесь, что тесты проходят.
-<!-- /agents-md:auto:testing-instructions -->
-
-## Code Style
-
-<!-- agents-md:auto:code-style -->
-- Добавьте правила стиля кода вручную.
-<!-- /agents-md:auto:code-style -->
-
-## Build and Deployment
-
-<!-- agents-md:auto:build-and-deployment -->
-- Параметры сборки и деплоя не обнаружены — добавьте вручную.
-<!-- /agents-md:auto:build-and-deployment -->
-
-## Project Structure
-
-<!-- agents-md:auto:project-structure -->
-- `app/`
-- `docs/`
-- `src/`
-- `tests/`
-<!-- /agents-md:auto:project-structure -->
+> Последнее обновление: 2026-07-12 15:51:45 UTC
 
 ## Project Overview
 
@@ -673,8 +621,12 @@ Shell-метаданные `System.Media.Duration` (`Infrastructure/ShellMetadat
   контролу (проверка `inControl && isNavKey` в `TryHandleHotkey`).
 - **Страховка.** `VideoViewerView` дополнительно возвращает фокус окну (`FocusHostWindow`) при
   старте воспроизведения (`IsPlaying → true`) и по клику на видео.
-- **Ctrl+Z — восстановление удаления.** Обрабатывается в `TryHandleHotkey` (`Key.Z` + `ModifierKeys.Control`)
-  и зовёт `RestoreLastDeleteCommand`, работая даже когда фокус у нативного окна VLC.
+- **Восстановление удаления — Ctrl+Z или Page Up.** Обрабатывается в `TryHandleHotkey`
+  (`Key.Z` + `ModifierKeys.Control`, либо `Key.PageUp` без модификатора) и зовёт
+  `RestoreLastDeleteCommand`, работая даже когда фокус у нативного окна VLC. `Page Up` — жёстко
+  зашитый дублёр Ctrl+Z, действует в любом контексте (фото/видео/пустой экран). `Page Up` входит
+  в `AllConfigurableKeys` и может быть назначен на Exit/ToggleChrome/FullScreen — в этом случае
+  настраиваемая функция приоритетнее (её ветка в `TryHandleHotkey` расположена выше switch).
 - **Настраиваемая клавиша закрытия программы.** Добавлена настройка `ExitKey` (`AppSettings`),
   по умолчанию `End`. Обрабатывается в `MainWindow.TryHandleHotkey` (до `Escape`), парсится через
   `Enum.TryParse<Key>`. Не назначай навигационные клавиши (стрелки, Space) — иначе сломается
