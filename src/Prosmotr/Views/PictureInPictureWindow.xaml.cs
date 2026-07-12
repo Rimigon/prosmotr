@@ -56,7 +56,11 @@ public partial class PictureInPictureWindow : Window
 
     private void OnRestoreRequested(object? sender, EventArgs e)
     {
-        if (!_isClosed) RestoreRequested?.Invoke(this, EventArgs.Empty);
+        if (!_isClosed)
+        {
+            _restoreRaised = true;
+            RestoreRequested?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void OnCloseRequested(object? sender, EventArgs e)
@@ -113,7 +117,22 @@ public partial class PictureInPictureWindow : Window
     {
         _isClosed = true;
         try { PipVideo.MediaPlayer = null; } catch { }
-        if (DataContext is PictureInPictureViewModel vm) vm.Dispose();
+        // Если окно закрывается системно (крестик/Alt+F4), а не через Restore,
+        // уведомляем MainViewModel, чтобы он вернул видео в основное окно.
+        if (DataContext is PictureInPictureViewModel vm)
+        {
+            if (!_restoreRaised)
+                OnCloseRequested(vm, EventArgs.Empty);
+            vm.Dispose();
+        }
         base.OnClosing(e);
+    }
+
+    private bool _restoreRaised;
+
+    public new void Close()
+    {
+        _restoreRaised = true;
+        base.Close();
     }
 }

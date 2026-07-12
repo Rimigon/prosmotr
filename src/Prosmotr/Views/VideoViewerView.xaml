@@ -92,6 +92,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <!-- Play / Pause -->
@@ -119,7 +120,7 @@
                         <!-- Таймлайн -->
                         <Slider x:Name="PositionSlider" Grid.Column="2" VerticalAlignment="Center"
                                 Minimum="0" Maximum="{Binding LengthMs}" IsMoveToPointEnabled="True"
-                                Margin="8,0" Width="260" />
+                                Margin="8,0" />
 
                         <!-- Длительность -->
                         <TextBlock Grid.Column="3" VerticalAlignment="Center" Margin="6,0"
@@ -144,7 +145,7 @@
                         </ui:Button>
 
                         <!-- Громкость (с усилением до 300%); метка на 100% = «нормально» -->
-                        <Slider Grid.Column="5" Width="104" VerticalAlignment="Center"
+                        <Slider Grid.Column="5" Width="80" VerticalAlignment="Center"
                                 Minimum="0" Maximum="{Binding MaxVolume}" Value="{Binding Volume, Mode=TwoWay}"
                                 SmallChange="5" LargeChange="10" Ticks="100" TickPlacement="BottomRight"
                                 ToolTip="Громкость / усиление до 300% (↑/↓)" Margin="4,0,2,0" />
@@ -190,7 +191,7 @@
 
                         <!-- Скорость: иконка внутри кнопки + текущее значение; по клику меню -->
                         <ui:Button x:Name="SpeedButton" Grid.Column="10" Appearance="Transparent"
-                                   Foreground="White" Margin="8,0,2,0" MinWidth="64"
+                                   Foreground="White" Margin="4,0,2,0" MinWidth="48"
                                    Content="{Binding RateText}" Click="OnSpeedButtonClick"
                                    ToolTip="Скорость воспроизведения ([ / ])"
                                    AutomationProperties.Name="Скорость воспроизведения">
@@ -206,11 +207,11 @@
 
                         <!-- Picture-in-Picture -->
                         <ui:Button Grid.Column="12" Appearance="Transparent" Click="OnPictureInPictureClick"
-                                   ToolTip="Окно в окне (P)" MinWidth="40"
+                                   ToolTip="Окно в окне (P)" MinWidth="28"
                                    AutomationProperties.Name="Окно в окне">
-                            <Viewbox Width="20" Height="20">
+                            <Viewbox Width="18" Height="18">
                                 <Path Fill="White"
-                                      Data="M0,0 L24,0 L24,24 L0,24 Z M0,0 L15,0 L15,15 L0,15 Z M18,18 L24,18 L24,24 L18,24 Z" />
+                                      Data="M1,2 L15,2 L15,11 L1,11 Z M17,6 L23,6 L23,22 L7,22 L7,13 L17,13 Z M8,14 L22,14 L22,21 L8,21 Z" />
                             </Viewbox>
                         </ui:Button>
 

@@ -460,16 +460,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     private void ClosePictureInPictureWorker(PictureInPictureWindow window)
     {
-        var player = window.DetachPlayer();
-        player?.Stop();
-        if (_pipSourceVm != null)
-        {
-            _pipSourceVm.IsPictureInPicture = false;
-            _pipSourceVm = null;
-        }
-        _activePipWindow = null;
-        window.Close();
-        RefreshCommandStates();
+        // При закрытии PiP-окна (крестик/Alt+F4) возвращаем видео в основное окно,
+        // иначе плеер остаётся отцепленным и приложение зависает на placeholder-экране.
+        RestorePictureInPictureWorker(window);
     }
 
     public void Dispose()

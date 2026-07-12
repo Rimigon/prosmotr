@@ -244,7 +244,7 @@ public partial class MainWindow : FluentWindow
         bool inControl = focused is ComboBox || focused is Slider
             || focused is System.Windows.Controls.Primitives.Thumb
             || focused is System.Windows.Controls.TextBox;
-        bool isNavKey = key is Key.Left or Key.Right or Key.Up or Key.Down or Key.Space
+        bool isNavKey = key is Key.Left or Key.Right or Key.Up or Key.Down or Key.Space or Key.Enter
             or Key.OemOpenBrackets or Key.OemCloseBrackets or Key.OemPlus or Key.OemMinus
             or Key.Add or Key.Subtract;
         if (inControl && isNavKey) return false;
@@ -342,7 +342,9 @@ public partial class MainWindow : FluentWindow
 
         switch (key)
         {
-            case Key.Space:
+            case Key.Space or Key.Enter:
+                // Enter повторяет действие пробела: пауза/воспроизведение, а на
+                // законченном видео — перезапуск сначала (Replay через TogglePlay).
                 video.TogglePlayCommand.Execute(null);
                 return true;
             case Key.M:
