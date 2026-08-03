@@ -248,6 +248,30 @@
                     </Grid>
                 </Border>
 
+                <!-- Превью кадра при наведении на таймлайн (как YouTube): позиционируется code-behind'ом
+                     над слайдером; видимостью управляет он же. IsHitTestVisible=False — не мешаем кликам. -->
+                <Border x:Name="PreviewPanel"
+                        Grid.Row="0"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Bottom"
+                        Width="328" Height="208"
+                        Background="#E61A1A1A"
+                        BorderBrush="#66FFFFFF"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="4"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="8" ShadowDepth="1" Opacity="0.4" />
+                    </Border.Effect>
+                    <StackPanel>
+                        <Image x:Name="PreviewImage" Width="320" Height="180" Stretch="Uniform" SnapsToDevicePixels="True" />
+                        <TextBlock x:Name="PreviewTime" Foreground="White" FontSize="11" HorizontalAlignment="Center"
+                                   Margin="0,3,0,1" />
+                    </StackPanel>
+                </Border>
+
                 <!-- Мини-таймлайн: тонкий прогресс при скрытой панели управления.
                      IsHitTestVisible=False, чтобы клики проходили на ClickArea (пауза/полный экран).
                      Видимостью управляет code-behind (UpdateChromeVisibility). -->

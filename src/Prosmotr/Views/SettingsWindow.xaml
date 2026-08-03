@@ -171,6 +171,37 @@
                     </Grid>
                 </Border>
 
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Превью при наведении на таймлайн" />
+                            <TextBlock Text="Показывать кадр видео под курсором при наведении на таймлайн (как YouTube)"
+                                       Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowTimelinePreview, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Пауза при наведении на таймлайн" />
+                            <TextBlock Text="Видео ставится на паузу при наведении и возобновляется после ухода мыши"
+                                       Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding TimelinePreviewPauseVideo, Mode=TwoWay}"
+                                         IsEnabled="{Binding ShowTimelinePreview}" />
+                    </Grid>
+                </Border>
+
                 <!-- УДАЛЕНИЕ -->
                 <TextBlock Text="Удаление" Style="{StaticResource Section}" />
 

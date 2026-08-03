@@ -78,6 +78,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private bool _arrowKeysSeekVideo;
     [ObservableProperty] private bool _showMiniTimeline;
     [ObservableProperty] private int _miniTimelineThresholdMinutes;
+    [ObservableProperty] private bool _showTimelinePreview;
+    [ObservableProperty] private bool _timelinePreviewPauseVideo;
     [ObservableProperty] private bool _matchExplorerSort;
     [ObservableProperty] private bool _integrateShell;
     [ObservableProperty] private bool _isAssociationsRegistered;
@@ -120,6 +122,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
         ArrowKeysSeekVideo = s.ArrowKeysSeekVideo;
         ShowMiniTimeline = s.ShowMiniTimeline;
         MiniTimelineThresholdMinutes = s.MiniTimelineThresholdMinutes;
+        ShowTimelinePreview = s.ShowTimelinePreview;
+        TimelinePreviewPauseVideo = s.TimelinePreviewPauseVideo;
         MatchExplorerSort = s.MatchExplorerSort;
         IntegrateShell = s.IntegrateShell;
         ExitKey = IsAllowedKey(s.ExitKey) ? s.ExitKey : "End";
@@ -172,6 +176,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
         s.ArrowKeysSeekVideo = ArrowKeysSeekVideo;
         s.ShowMiniTimeline = ShowMiniTimeline;
         s.MiniTimelineThresholdMinutes = Math.Clamp(MiniTimelineThresholdMinutes, 1, 120);
+        s.ShowTimelinePreview = ShowTimelinePreview;
+        s.TimelinePreviewPauseVideo = TimelinePreviewPauseVideo;
         s.MatchExplorerSort = MatchExplorerSort;
         s.IntegrateShell = IntegrateShell;
         s.ExitKey = ExitKey;
@@ -205,6 +211,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
     partial void OnArrowKeysSeekVideoChanged(bool value) => Commit();
     partial void OnShowMiniTimelineChanged(bool value) => Commit(immediate: true);
     partial void OnMiniTimelineThresholdMinutesChanged(int value) => Commit(immediate: true);
+    partial void OnShowTimelinePreviewChanged(bool value) => Commit(immediate: true);
+    partial void OnTimelinePreviewPauseVideoChanged(bool value) => Commit(immediate: true);
     partial void OnMatchExplorerSortChanged(bool value) => Commit();
     partial void OnExitKeyChanged(string value)
     {

@@ -1,10 +1,12 @@
 using System;
 using System.ComponentModel;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.Messaging;
+using Prosmotr.Converters;
 using Prosmotr.Infrastructure;
 using Prosmotr.ViewModels;
 
@@ -34,6 +36,15 @@ public partial class VideoViewerView : UserControl
     private long _subtitleMenuClosedAt;
     private long _speedMenuClosedAt;
     private const long MenuToggleThresholdMs = 350;
+
+    // Превью кадра при наведении на таймлайн (как YouTube).
+    private readonly DispatcherTimer _previewThrottle;  // семплер: будит обработку, пока есть неотработанная позиция
+    private readonly DispatcherTimer _pauseHoverTimer;  // задержка паузы при наведении (режим «пауза»)
+    private bool _previewVisible;
+    private double _lastHoverMs;          // актуальная позиция курсора на таймлайне, мс
+    private long _requestedMs = -1;       // позиция последнего запрошенного кадра (для «погони»)
+    private bool _previewRequestInFlight; // выполняется запрос кадра (серийная погоня: не более одного)
+    private static readonly MillisecondsToTimeConverter MsToTime = new();
 
     public VideoViewerView()
     {
@@ -77,6 +88,17 @@ public partial class VideoViewerView : UserControl
             System.Windows.Controls.Primitives.Thumb.DragCompletedEvent,
             new System.Windows.Controls.Primitives.DragCompletedEventHandler(OnSeekDragCompleted));
 
+        // Превью при наведении: дросселируем запросы кадров, чтобы не спамить второй декодер.
+        _previewThrottle = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _previewThrottle.Tick += OnPreviewThrottleTick;
+        // Режим «пауза при наведении»: случайное пересечение курсора не должно ставить паузу — ждём 250 мс.
+        _pauseHoverTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _pauseHoverTimer.Tick += OnPauseHoverTick;
+
+        PositionSlider.MouseEnter += OnSliderMouseEnter;
+        PositionSlider.MouseLeave += OnSliderMouseLeave;
+        PositionSlider.MouseMove += OnSliderMouseMove;
+
         // Контекстное меню по правому клику (аудио, субтитры, скорость, действия с файлом).
         Overlay.ContextMenu = new ContextMenu();
         Overlay.ContextMenuOpening += OnContextMenuOpening;
@@ -104,6 +126,8 @@ public partial class VideoViewerView : UserControl
     // привязываем новый плеер и запускаем здесь, иначе остаётся старый (пустой кадр).
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        _vm?.ResumeFromPreview();
+        HidePreviewPanel();
         Detach();
         if (DataContext is VideoViewerViewModel vm)
         {
@@ -193,6 +217,12 @@ public partial class VideoViewerView : UserControl
         _seekThrottle.Tick -= OnSeekThrottleTick;
         _seekCooldown.Stop();
         _seekCooldown.Tick -= OnSeekCooldownTick;
+        _previewThrottle.Stop();
+        _previewThrottle.Tick -= OnPreviewThrottleTick;
+        _pauseHoverTimer.Stop();
+        _pauseHoverTimer.Tick -= OnPauseHoverTick;
+        _vm?.ResumeFromPreview();
+        HidePreviewPanel();
         _isSeekDragging = false;
         _hasPendingSeek = false;
 
@@ -274,7 +304,9 @@ public partial class VideoViewerView : UserControl
         else if (e.PropertyName == nameof(VideoViewerViewModel.IsBuffering)
                  || e.PropertyName == nameof(VideoViewerViewModel.CanShowMiniTimeline)
                  || e.PropertyName == nameof(VideoViewerViewModel.IsEnded)
-                 || e.PropertyName == nameof(VideoViewerViewModel.LengthMs))
+                 || e.PropertyName == nameof(VideoViewerViewModel.LengthMs)
+                 || e.PropertyName == nameof(VideoViewerViewModel.TimelinePreviewEnabled)
+                 || e.PropertyName == nameof(VideoViewerViewModel.PauseVideoOnHover))
         {
             UpdateChromeVisibility();
             UpdateCover();
@@ -357,6 +389,138 @@ public partial class VideoViewerView : UserControl
         _seekCooldown.Stop();
         // Cooldown только снимает блокировку с TimeChanged; принудительная синхронизация
         // здесь не нужна — следующее актуальное событие от плеера обновит ползунок.
+    }
+
+    // --- Превью кадра при наведении на таймлайн (как YouTube) ---
+
+    /// <summary>Можно ли показывать превью прямо сейчас (настройка + состояние видео).</summary>
+    private bool CanPreview()
+        => _vm != null
+           && _vm.TimelinePreviewEnabled
+           && _vm.LengthMs > 0
+           && !_vm.HasError
+           && _vm.IsBuffering != true;
+
+    private void OnSliderMouseEnter(object sender, MouseEventArgs e)
+    {
+        if (!CanPreview() || _vm == null) return;
+        ShowPreviewPanel();
+        // Сразу запрашиваем кадр под курсором — не ждём первого движения.
+        var pos = e.GetPosition(PositionSlider);
+        _lastHoverMs = TimelineMath.MapSliderXToMs(pos.X, PositionSlider.ActualWidth, _vm.LengthMs);
+        UpdatePreviewPosition();
+        _requestedMs = -1; // гарантировать, что первая заявка сработает
+        _previewThrottle.Start();
+        _ = PumpPreviewFrame();
+        if (_vm.PauseVideoOnHover)
+        {
+            _pauseHoverTimer.Stop();
+            _pauseHoverTimer.Start();
+        }
+    }
+
+    private void OnSliderMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!CanPreview() || _vm == null) return;
+        var pos = e.GetPosition(PositionSlider);
+        _lastHoverMs = TimelineMath.MapSliderXToMs(pos.X, PositionSlider.ActualWidth, _vm.LengthMs);
+        UpdatePreviewPosition();
+        // Плавная погоня за курсором: таймер работает, пока есть неотработанная позиция;
+        // при старте движения запрашиваем кадр немедленно (leading edge), дальше — по таймеру/цепочке.
+        if (!_previewThrottle.IsEnabled)
+        {
+            _previewThrottle.Start();
+            _ = PumpPreviewFrame();
+        }
+    }
+
+    private void OnSliderMouseLeave(object sender, MouseEventArgs e)
+    {
+        _previewThrottle.Stop();
+        _pauseHoverTimer.Stop();
+        _vm?.ResumeFromPreview();
+        HidePreviewPanel();
+    }
+
+    private async void OnPreviewThrottleTick(object? sender, EventArgs e)
+    {
+        // Семплер: сам не гаснет, пока есть работа (новый запрос в полёте или позиция менялась).
+        if (!_previewVisible || _vm == null)
+        {
+            _previewThrottle.Stop();
+            return;
+        }
+        if (!_previewRequestInFlight && (long)_lastHoverMs == _requestedMs)
+        {
+            _previewThrottle.Stop(); // позиция не меняется и запросов нет — работу закончили
+            return;
+        }
+        await PumpPreviewFrame();
+    }
+
+    /// <summary>Серийная «погоня за курсором»: одновременно выполняется не больше одного запроса кадра;
+    /// по завершении сразу запрашивается кадр на актуальной позиции, если она уехала. За счёт этого
+    /// превью обновляется непрерывно во время движения (в темпе декодирования), а не только после
+    /// остановки мыши. Показываем каждый пришедший кадр — чуть устаревший, но движение видно.</summary>
+    private async Task PumpPreviewFrame()
+    {
+        if (!_previewVisible || _vm == null) return;
+        if (_previewRequestInFlight) return;
+        var ms = (long)_lastHoverMs;
+        if (ms == _requestedMs) return;
+
+        _previewRequestInFlight = true;
+        _requestedMs = ms;
+        try
+        {
+            var frame = await _vm.RequestPreviewFrameAsync(ms);
+            if (frame != null && _previewVisible)
+                PreviewImage.Source = frame;
+        }
+        finally
+        {
+            _previewRequestInFlight = false;
+        }
+        // Пока курсор уехал дальше — сразу запрашиваем следующий кадр (без ожидания таймера).
+        if (_previewVisible && (long)_lastHoverMs != _requestedMs)
+            await PumpPreviewFrame();
+    }
+
+    private void OnPauseHoverTick(object? sender, EventArgs e)
+    {
+        _pauseHoverTimer.Stop();
+        _vm?.PauseForPreview();
+    }
+
+    private void ShowPreviewPanel()
+    {
+        _previewVisible = true;
+        PreviewPanel.Visibility = Visibility.Visible;
+        UpdatePreviewPosition();
+        PreviewPanel.UpdateLayout(); // чтобы ActualWidth/Height были известны для позиционирования
+        UpdatePreviewPosition();
+    }
+
+    private void HidePreviewPanel()
+    {
+        _previewVisible = false;
+        _previewThrottle.Stop();
+        if (PreviewPanel != null)
+            PreviewPanel.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>Позиционирование панели над слайдером: следует за курсором по X, clamp по окну,
+    /// снизу отступ = высота панели управления + 10px. Обновляет метку времени.</summary>
+    private void UpdatePreviewPosition()
+    {
+        if (PreviewPanel == null || _vm == null) return;
+        var mouse = Mouse.GetPosition(Overlay);
+        PreviewTime.Text = MsToTime.Convert(_lastHoverMs, typeof(double), null, CultureInfo.CurrentCulture)?.ToString() ?? string.Empty;
+        var bottom = ControlBar.ActualHeight + 10;
+        var w = Math.Max(1, PreviewPanel.ActualWidth);
+        var left = mouse.X - w / 2;
+        left = Math.Clamp(left, 4, Math.Max(4, Overlay.ActualWidth - w - 4));
+        PreviewPanel.Margin = new Thickness(left, 0, 0, bottom);
     }
 
     // --- Клик по области видео: один — пауза, двойной — полный экран ---
@@ -671,6 +835,10 @@ public partial class VideoViewerView : UserControl
             w.Cursor = hideCursor ? Cursors.None : Cursors.Arrow;
         UpdateSideNav();
         UpdateInfo();
+
+        // Превью при наведении живёт только вместе с панелью управления и корректным видео.
+        if (!show || !CanPreview())
+            HidePreviewPanel();
     }
 
     // Боковые стрелки перехода между файлами показываются только вместе с панелью управления

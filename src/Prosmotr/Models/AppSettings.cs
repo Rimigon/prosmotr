@@ -28,6 +28,10 @@ public sealed class AppSettings
     /// <summary>Видео короче этого порога (в минутах) показывает мини-таймлайн при скрытой панели.</summary>
     [Range(1, 120)]
     public int MiniTimelineThresholdMinutes { get; set; } = 20;
+    /// <summary>Показывать превью кадра при наведении на таймлайн видео.</summary>
+    public bool ShowTimelinePreview { get; set; } = true;
+    /// <summary>Ставить видео на паузу при наведении на таймлайн (режим скраббинга).</summary>
+    public bool TimelinePreviewPauseVideo { get; set; } = false;
 
     // --- Удаление ---
     public bool ConfirmDelete { get; set; } = true;

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Windows;
 using MediaRendering = System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -30,6 +31,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         { 0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f };
 
     private readonly VideoPlaybackService _playback;
+    private readonly LibVlcProvider _provider;
     private readonly ISettingsService _settings;
     private readonly IPlaybackPositionStore _positions;
     private readonly IDialogService _dialog;
@@ -86,6 +88,12 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
     // Picture-in-Picture: окно, в которое временно перемещается плеер.
     private Views.PictureInPictureWindow? _pipWindow;
+
+    // Превью при наведении на таймлайн: второй скрытый декодер + «только последний запрос важен».
+    private VideoFramePreviewService? _preview;
+    private CancellationTokenSource? _previewCts;
+    private int _previewGen;
+    private bool _wasPlayingBeforePreview;
 
     public MediaItem Item { get; private set; }
     public MediaPlayer Player => _playback.Player;
@@ -148,6 +156,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         INotificationService notify)
     {
         Item = item;
+        _provider = provider;
         _settings = settings;
         _positions = positions;
         _dialog = dialog;
@@ -229,6 +238,8 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         // белый фон раньше, чем плеер начнёт освобождать Media.
         IsBuffering = true;
         _playback.StopAndRelease();
+        _preview?.ReleaseMedia();        // старый файл: закрыть handle; новый поднимется лениво при наведении
+        _wasPlayingBeforePreview = false;
         BeginPlayback();
     }
 
@@ -477,6 +488,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     {
         if (_disposed) return;
         _playback.StopAndRelease();
+        _preview?.ReleaseMedia(); // превью-плеер тоже держит файловый handle — освобождаем до IFileOperation (удаление)
     }
 
     /// <summary>
@@ -784,7 +796,13 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
     private void OnSettingsChanged(object? sender, EventArgs e)
     {
-        OnUi(UpdateCanShowMiniTimeline);
+        OnUi(() =>
+        {
+            UpdateCanShowMiniTimeline();
+            // Live-применение превью-настроек: View подписан на эти свойства.
+            OnPropertyChanged(nameof(TimelinePreviewEnabled));
+            OnPropertyChanged(nameof(PauseVideoOnHover));
+        });
     }
 
     private void UpdateCanShowMiniTimeline()
@@ -794,6 +812,53 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         CanShowMiniTimeline = _settings.Settings.ShowMiniTimeline
                               && LengthMs > 0
                               && LengthMs < thresholdMs;
+    }
+
+    /// <summary>Включено ли превью при наведении на таймлайн (настройка, live).</summary>
+    public bool TimelinePreviewEnabled => _settings.Settings.ShowTimelinePreview;
+
+    /// <summary>Ставить ли видео на паузу при наведении на таймлайн (настройка, live).</summary>
+    public bool PauseVideoOnHover => _settings.Settings.TimelinePreviewPauseVideo;
+
+    /// <summary>Запросить кадр превью на позиции ms. Возвращает замороженный BitmapSource или null.
+    /// Побеждает последний запрос: предыдущий отменяется (поколение _previewGen). Вызывается с UI-потока.</summary>
+    public async Task<BitmapSource?> RequestPreviewFrameAsync(long ms)
+    {
+        if (_disposed) return null;
+        _previewCts?.Cancel();
+        _previewCts?.Dispose();
+        _previewCts = new CancellationTokenSource();
+        var gen = ++_previewGen;
+        try
+        {
+            _preview ??= new VideoFramePreviewService(_provider.LibVlc);
+            _preview.Reset(Item.FullPath);
+            var frame = await _preview.GetFrameAsync(ms, _previewCts.Token);
+            if (frame == null || gen != _previewGen || _disposed) return null;
+            // BitmapSource обязан создаваться на UI-потоке: await без ConfigureAwait(false) продолжает в UI-контексте.
+            var bmp = BitmapSource.Create(frame.Width, frame.Height, 96, 96,
+                MediaRendering.PixelFormats.Bgra32, null, frame.Data, frame.Stride);
+            bmp.Freeze();
+            return bmp;
+        }
+        catch (OperationCanceledException) { return null; }
+        catch { return null; }
+    }
+
+    /// <summary>Наведение на таймлайн в режиме «пауза»: запомнить состояние и поставить на паузу.</summary>
+    public void PauseForPreview()
+    {
+        if (_disposed || _wasPlayingBeforePreview || IsEnded || IsBuffering) return;
+        _wasPlayingBeforePreview = _playback.IsPlaying;
+        if (_wasPlayingBeforePreview) _playback.Pause();
+    }
+
+    /// <summary>Уход мыши с таймлайна: возобновить, если до наведения видео играло.</summary>
+    public void ResumeFromPreview()
+    {
+        if (_disposed || !_wasPlayingBeforePreview) return;
+        _wasPlayingBeforePreview = false;
+        if (!IsEnded && !IsBuffering && !_playback.IsPlaying) _playback.Play();
     }
 
     private static void OnUi(Action action)
@@ -834,6 +899,11 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
 
         _seekCooldown.Stop();
         _stepThrottle.Stop();
+        _preview?.Dispose();
+        _preview = null;
+        _previewCts?.Cancel();
+        _previewCts?.Dispose();
+        _previewCts = null;
         _playback.Dispose();
     }
 }
