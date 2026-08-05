@@ -1,7 +1,7 @@
 # AGENTS.md
 
 > Автоматически поддерживаемая сводка контекста для AI-агентов.
-> Последнее обновление: 2026-08-03 16:40:09 UTC
+> Последнее обновление: 2026-08-05 10:40:44 UTC
 
 ## Project Overview
 
@@ -717,6 +717,18 @@ Shell-метаданные `System.Media.Duration` (`Infrastructure/ShellMetadat
   `Dispatcher.BeginInvoke(UpdateLayout, DispatcherPriority.Render)`. Это нужно, чтобы
   `ForegroundWindow` LibVLCSharp.WPF получил событие `LayoutUpdated` и пересчитал позицию
   overlay-окна — иначе панель/инфо-плашка иногда оказываются смещены или не видны.
+- **⚠️ Клик по кнопке «Полный экран» при живом видео вешал весь ПК (Event 41, без TDR).**
+  WPF-кнопка снимает захват мыши **после** `OnClick` — команда исполняется, пока кнопка ещё
+  держит захват. Синхронный рестайл/ресайз окна (`FullScreenHelper.Enter`) при захваченной мыши
+  на фоне живого видео (нативный D3D11-HWND LibVLC внутри HwndHost) давал жёсткий фриз всей
+  системы на AMD Radeon (перезагрузка). Горячая клавиша работала, т.к. при ней захвата нет.
+  **Фикс:** `MainViewModel.ToggleFullScreen`/`ExitFullScreen` идут через
+  `DeferFullScreenTransition` — `Mouse.Capture(null)` + `Dispatcher.BeginInvoke(…, Input)`,
+  т.е. переход выполняется после завершения цикла ввода (клик завершён, захват снят), как у
+  хоткея. Плюс подкласс `FullScreenSubclassProc` возвращает `HTCLIENT` только для точек ВНУТРИ
+  окна (безусловный `HTCLIENT` для любой точки при захваченной мыши раздувал
+  WM_NCHITTEST-шторм). Не делай переход в fullscreen синхронно внутри Click-обработчика и
+  не возвращай `HTCLIENT` безусловно.
 - **Мини-таймлайн видео при скрытой панели.** В `VideoViewerView` добавлен тонкий `ProgressBar`
   (`MiniTimeline`), который виден, когда основная панель управления скрыта. Видимость управляется
   из code-behind (`UpdateChromeVisibility`) вместе с `ControlBar`, чтобы не смешивать chrome-state

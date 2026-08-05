@@ -112,6 +112,9 @@ public static class FullScreenHelper
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
         int X, int Y, int cx, int cy, uint uFlags);
 
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, ref RECT lpRect);
+
     [DllImport("dwmapi.dll")]
     private static extern int DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS pMarInset);
 
@@ -134,7 +137,20 @@ public static class FullScreenHelper
     private static IntPtr FullScreenSubclassProc(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam, IntPtr uIdSubclass, IntPtr dwRefData)
     {
         if (msg == WM_NCHITTEST)
-            return (IntPtr)HTCLIENT; // весь экран — клиентская область, без resize-границ
+        {
+            // Возвращаем HTCLIENT только для точек ВНУТРИ окна. Безусловный HTCLIENT для любой
+            // точки опасен при захваченной мыши во время перехода в fullscreen: Windows шлёт
+            // WM_NCHITTEST окну-владельцу захвата на каждый тик позиции, и возврат HTCLIENT
+            // для точек за пределами окна (окно в этот момент ещё на старом размере) раздувает
+            // шторм WM_NCHITTEST/WM_WINDOWPOSCHANGING — на фоне ресайза D3D11-видео-HWND
+            // это риск зависания GPU (полный фриз ПК, см. DeferFullScreenTransition).
+            int x = (short)(lParam.ToInt64() & 0xFFFF);
+            int y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+            var rect = new RECT();
+            if (GetWindowRect(hWnd, ref rect) &&
+                x >= rect.Left && x < rect.Right && y >= rect.Top && y < rect.Bottom)
+                return (IntPtr)HTCLIENT; // весь экран — клиентская область, без resize-границ
+        }
         return DefSubclassProc(hWnd, msg, wParam, lParam);
     }
 
