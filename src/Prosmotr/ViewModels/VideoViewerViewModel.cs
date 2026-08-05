@@ -38,6 +38,12 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     private readonly INotificationService _notify;
 
     private float _pendingRate = 1f;
+    // Аудиодорожка, запомненная для этого файла: применяем в OnPlaying, когда список
+    // дорожек уже доступен (до старта LibVLC их не отдаёт). Обновляется при ручном
+    // выборе дорожки, чтобы повторный OnPlaying (replay из EndReached) применил
+    // актуальный выбор, а не устаревший сохранённый.
+    private int? _pendingAudioTrackId;
+    private string? _pendingAudioTrackName;
     private bool _started;
     private bool _resumeFromPip; // при восстановлении из PiP не перезагружаем Media, а делаем Stop/Play для перепривязки vout
     private bool _disposed;
@@ -265,6 +271,17 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         _pendingRate = ClampRate(_settings.Settings.DefaultPlaybackRate);
         if (_settings.Settings.RememberRatePerFile && stored?.Rate is > 0)
             _pendingRate = ClampRate(stored.Rate!.Value);
+
+        // Аудиодорожка: запомненная для файла. Применяется в OnPlaying (список дорожек
+        // появляется только после старта воспроизведения). Id может сместиться, если файл
+        // пересобран, — есть запасной поиск по имени.
+        _pendingAudioTrackId = null;
+        _pendingAudioTrackName = null;
+        if (_settings.Settings.RememberAudioTrackPerFile && stored is { AudioTrackId: not null })
+        {
+            _pendingAudioTrackId = stored.AudioTrackId;
+            _pendingAudioTrackName = stored.AudioTrackName;
+        }
 
         LoadAndPlayDeferred(startMs);
     }
@@ -564,7 +581,23 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         return result;
     }
 
-    public void SelectAudioTrack(int id) => _playback.SetAudioTrack(id);
+    public void SelectAudioTrack(int id)
+    {
+        _playback.SetAudioTrack(id);
+        // Актуализируем pending — повторный OnPlaying (replay из EndReached) применит
+        // именно этот выбор, а не устаревшую сохранённую дорожку.
+        _pendingAudioTrackId = id;
+        _pendingAudioTrackName = FindAudioTrackName(id);
+        if (_settings.Settings.RememberAudioTrackPerFile)
+            SavePosition();
+    }
+
+    private string? FindAudioTrackName(int id)
+    {
+        foreach (var t in _playback.AudioTracks)
+            if (t.Id == id) return t.Name;
+        return null;
+    }
     public void SelectSubtitle(int id) => _playback.SetSubtitle(id);
 
     [RelayCommand]
@@ -594,6 +627,19 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         {
             _notify.Show("Не удалось сохранить кадр.", NotificationKind.Error);
         }
+    }
+
+    /// <summary>Сопоставить сохранённую аудиодорожку с текущим списком дорожек: по id,
+    /// при отсутствии — по имени (id может сместиться, если файл пересобран).</summary>
+    private int? MatchAudioTrack(int savedId, string? savedName)
+    {
+        foreach (var t in _playback.AudioTracks)
+            if (t.Id == savedId) return t.Id;
+        if (!string.IsNullOrWhiteSpace(savedName))
+            foreach (var t in _playback.AudioTracks)
+                if (string.Equals(t.Name, savedName, StringComparison.OrdinalIgnoreCase))
+                    return t.Id;
+        return null;
     }
 
     private static string TrackName(int id, string? name) =>
@@ -698,6 +744,15 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         _playback.Volume = Volume;
         _playback.Mute = IsMuted;
 
+        // Восстанавливаем запомненную аудиодорожку файла (список дорожек доступен только
+        // после старта). Сначала по id; если id сместился (файл пересобран) — по имени.
+        if (_pendingAudioTrackId is int trackId)
+        {
+            var idToApply = MatchAudioTrack(trackId, _pendingAudioTrackName);
+            if (idToApply.HasValue)
+                _playback.SetAudioTrack(idToApply.Value);
+        }
+
         // Если seek произошёл из состояния EndReached — пользователь ожидает, что видео
         // останется на паузе на выбранной позиции, а не сразу начнёт играть.
         if (_pauseAfterStart)
@@ -741,7 +796,11 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         var time = (long)PositionMs;
         if (time <= 1000) return;
         float? rate = _settings.Settings.RememberRatePerFile ? Rate : null;
-        _positions.Save(Item.FullPath, time, (long)LengthMs, rate);
+        // Только реальная дорожка (>0); -1/0 = дефолт/нет дорожки — не храним.
+        int? audioId = _settings.Settings.RememberAudioTrackPerFile && _playback.CurrentAudioTrack > 0
+            ? _playback.CurrentAudioTrack : null;
+        string? audioName = audioId is int id ? FindAudioTrackName(id) : null;
+        _positions.Save(Item.FullPath, time, (long)LengthMs, rate, audioId, audioName);
     }
 
     private static string FormatRate(float r) =>

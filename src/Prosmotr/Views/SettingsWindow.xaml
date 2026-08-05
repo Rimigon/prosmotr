@@ -86,6 +86,17 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
+                        <TextBlock Text="Запоминать аудиодорожку для каждого файла" Style="{StaticResource RowLabel}" />
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding RememberAudioTrackPerFile, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <TextBlock Text="Продолжать видео с сохранённой позиции" Style="{StaticResource RowLabel}" />
                         <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding ResumeVideoPosition, Mode=TwoWay}" />
                     </Grid>

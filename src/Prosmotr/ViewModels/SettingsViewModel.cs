@@ -63,6 +63,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private AppTheme _theme_;
     [ObservableProperty] private float _defaultPlaybackRate;
     [ObservableProperty] private bool _rememberRatePerFile;
+    [ObservableProperty] private bool _rememberAudioTrackPerFile;
     [ObservableProperty] private bool _resumeVideoPosition;
     [ObservableProperty] private bool _confirmDelete;
     [ObservableProperty] private bool _permanentDelete;
@@ -107,6 +108,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         Theme_ = s.Theme;
         DefaultPlaybackRate = s.DefaultPlaybackRate;
         RememberRatePerFile = s.RememberRatePerFile;
+        RememberAudioTrackPerFile = s.RememberAudioTrackPerFile;
         ResumeVideoPosition = s.ResumeVideoPosition;
         ConfirmDelete = s.ConfirmDelete;
         PermanentDelete = s.PermanentDelete;
@@ -161,6 +163,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         s.Theme = Theme_;
         s.DefaultPlaybackRate = DefaultPlaybackRate;
         s.RememberRatePerFile = RememberRatePerFile;
+        s.RememberAudioTrackPerFile = RememberAudioTrackPerFile;
         s.ResumeVideoPosition = ResumeVideoPosition;
         s.ConfirmDelete = ConfirmDelete;
         s.PermanentDelete = PermanentDelete;
@@ -193,6 +196,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     partial void OnTheme_Changed(AppTheme value) { Commit(immediate: true); if (!_loading) _theme.Apply(value); }
     partial void OnDefaultPlaybackRateChanged(float value) => Commit();
     partial void OnRememberRatePerFileChanged(bool value) => Commit();
+    partial void OnRememberAudioTrackPerFileChanged(bool value) => Commit();
     partial void OnResumeVideoPositionChanged(bool value) => Commit();
     partial void OnConfirmDeleteChanged(bool value) => Commit();
     partial void OnPermanentDeleteChanged(bool value) => Commit();

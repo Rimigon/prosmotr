@@ -34,10 +34,17 @@ public sealed class PlaybackPositionStore : IPlaybackPositionStore, IDisposable
             return _map.TryGetValue(Key(path), out var p) ? p : null;
     }
 
-    public void Save(string path, long positionMs, long durationMs, float? rate)
+    public void Save(string path, long positionMs, long durationMs, float? rate, int? audioTrackId, string? audioTrackName)
     {
         lock (_gate)
-            _map[Key(path)] = new PlaybackPosition { PositionMs = positionMs, DurationMs = durationMs, Rate = rate };
+            _map[Key(path)] = new PlaybackPosition
+            {
+                PositionMs = positionMs,
+                DurationMs = durationMs,
+                Rate = rate,
+                AudioTrackId = audioTrackId,
+                AudioTrackName = audioTrackName
+            };
         ScheduleFlush();
     }
 

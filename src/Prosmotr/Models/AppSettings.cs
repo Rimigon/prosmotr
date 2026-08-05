@@ -10,7 +10,9 @@ public sealed class AppSettings
     [Range(0.25, 4.0)]
     public float DefaultPlaybackRate { get; set; } = 1.0f;
     /// <summary>Запоминать последнюю скорость отдельно для каждого файла.</summary>
-    public bool RememberRatePerFile { get; set; } = false;
+    public bool RememberRatePerFile { get; set; } = true;
+    /// <summary>Запоминать выбранную аудиодорожку отдельно для каждого файла.</summary>
+    public bool RememberAudioTrackPerFile { get; set; } = true;
     /// <summary>Продолжать воспроизведение видео с сохранённой позиции.</summary>
     public bool ResumeVideoPosition { get; set; } = true;
     public int LastVolume { get; set; } = 100;

@@ -26,11 +26,11 @@ public interface IRecentFilesService
     void Clear();
 }
 
-/// <summary>Хранилище позиций воспроизведения видео (resume).</summary>
+/// <summary>Хранилище позиций воспроизведения видео (resume + скорость/аудиодорожка на файл).</summary>
 public interface IPlaybackPositionStore
 {
     PlaybackPosition? Get(string path);
-    void Save(string path, long positionMs, long durationMs, float? rate);
+    void Save(string path, long positionMs, long durationMs, float? rate, int? audioTrackId, string? audioTrackName);
     void Remove(string path);
     void Flush();
 }
