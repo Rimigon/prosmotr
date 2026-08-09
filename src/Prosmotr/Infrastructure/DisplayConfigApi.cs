@@ -13,6 +13,10 @@ public static class DisplayConfigApi
     public const uint SDC_TOPOLOGY_CLONE = 0x00000002;
     public const uint SDC_TOPOLOGY_EXTEND = 0x00000004;
     public const uint SDC_USE_SUPPLIED_DISPLAY_CONFIG = 0x00000020;
+    // Сохраняет применённую конфигурацию в persistence database Windows (иначе при
+    // перезагрузке/сне система восстановит последнюю СОХРАНЁННУЮ топологию — клон).
+    // Валиден только в комбинации с SDC_USE_SUPPLIED_DISPLAY_CONFIG (см. MSDN).
+    public const uint SDC_SAVE_TO_DATABASE = 0x00000200;
     public const uint SDC_ALLOW_CHANGES = 0x00000400;
     public const uint SDC_PATH_PERSIST_IF_REQUIRED = 0x00000800;
     public const uint SDC_VIRTUAL_MODE_AWARE = 0x00008000;

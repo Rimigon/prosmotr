@@ -81,12 +81,18 @@ public sealed class DisplayTopologyService : IDisplayTopologyService
 
             if (_savedPaths != null && _savedModes != null)
             {
+                // ВАЖНО: SDC_SAVE_TO_DATABASE обязателен. Без него USE_SUPPLIED_DISPLAY_CONFIG
+                // применяет конфигурацию «временно» (не пишет в persistence database Windows),
+                // а EnableClone через SDC_TOPOLOGY_CLONE уже сохранил клон как последнюю топологию.
+                // Итог без этого флага: после перезагрузки/сна Windows восстанавливает клон,
+                // даже когда приложение не запущено.
                 uint flags = DisplayConfigApi.SDC_APPLY
                            | DisplayConfigApi.SDC_USE_SUPPLIED_DISPLAY_CONFIG
+                           | DisplayConfigApi.SDC_SAVE_TO_DATABASE
                            | DisplayConfigApi.SDC_ALLOW_CHANGES
                            | DisplayConfigApi.SDC_VIRTUAL_MODE_AWARE;
 
-                AppLog.Write($"[Clone] RestoreExtend: trying SDC_USE_SUPPLIED_DISPLAY_CONFIG flags=0x{flags:X8}, paths={_savedPaths.Length}, modes={_savedModes.Length}");
+                AppLog.Write($"[Clone] RestoreExtend: trying SDC_USE_SUPPLIED_DISPLAY_CONFIG|SAVE_TO_DATABASE flags=0x{flags:X8}, paths={_savedPaths.Length}, modes={_savedModes.Length}");
                 hr = DisplayConfigApi.SetDisplayConfig((uint)_savedPaths.Length, _savedPaths,
                     (uint)_savedModes.Length, _savedModes, flags);
                 AppLog.Write($"[Clone] RestoreExtend USE_SUPPLIED returned: 0x{hr:X8} ({hr})");
