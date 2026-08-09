@@ -760,11 +760,19 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         };
         _firstFrameTimer.Start();
         // Применяем отложенные параметры, когда воспроизведение реально стартовало.
-        _playback.Rate = _pendingRate;
+        // ВАЖНО: только если значение реально отличается от текущего у плеера. Событие
+        // Playing приходит и на каждый resume после паузы; безусловный SetRate/SetVolume/SetMute
+        // перезапускал аудиовыход LibVLC → на Bluetooth (A2DP) звук пропадал на секунду
+        // после пауза→play (ресемплер активен при скорости ≠ 1×). Свежая загрузка/реплей
+        // сбрасывают Rate/Volume в дефолты — там guard пропускает применение, как раньше.
+        if (Math.Abs(_playback.Rate - _pendingRate) > 0.001f)
+            _playback.Rate = _pendingRate;
         Rate = _pendingRate;
         RateText = FormatRate(_pendingRate);
-        _playback.Volume = Volume;
-        _playback.Mute = IsMuted;
+        if (_playback.Volume != Volume)
+            _playback.Volume = Volume;
+        if (_playback.Mute != IsMuted)
+            _playback.Mute = IsMuted;
 
         // Восстанавливаем запомненную аудиодорожку файла (список дорожек доступен только
         // после старта). Сначала по id; если id сместился (файл пересобран) — по имени.
