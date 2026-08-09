@@ -13,6 +13,10 @@ public sealed class AppSettings
     public bool RememberRatePerFile { get; set; } = true;
     /// <summary>Запоминать выбранную аудиодорожку отдельно для каждого файла.</summary>
     public bool RememberAudioTrackPerFile { get; set; } = true;
+    /// <summary>Запоминать выбранную аудиодорожку для ПАПКИ (сезона сериала): выбор озвучки
+    /// в одной серии применяется ко всем файлам папки, у которых такая дорожка есть.
+    /// Приоритетнее пер-файловой памяти (решение пользователя).</summary>
+    public bool RememberAudioTrackPerFolder { get; set; } = true;
     /// <summary>Продолжать воспроизведение видео с сохранённой позиции.</summary>
     public bool ResumeVideoPosition { get; set; } = true;
     public int LastVolume { get; set; } = 100;

@@ -374,6 +374,7 @@ public partial class App : Application
         services.AddSingleton<IImageCache, ImageCache>();
         services.AddSingleton<IThumbnailService, ThumbnailService>();
         services.AddSingleton<IPlaybackPositionStore, PlaybackPositionStore>();
+        services.AddSingleton<IFolderAudioTrackStore, FolderAudioTrackStore>();
         services.AddSingleton<IFileAssociationService, FileAssociationService>();
         services.AddSingleton<IDisplayTopologyService, DisplayTopologyService>();
         services.AddSingleton<LibVlcProvider>();
@@ -383,7 +384,7 @@ public partial class App : Application
         services.AddTransient<Func<MediaItem, ImageViewerViewModel>>(sp =>
             item => new ImageViewerViewModel(item, sp.GetRequiredService<IImageCache>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<INotificationService>()));
         services.AddTransient<Func<MediaItem, VideoViewerViewModel>>(sp =>
-            item => new VideoViewerViewModel(item, sp.GetRequiredService<LibVlcProvider>(), sp.GetRequiredService<ISettingsService>(), sp.GetRequiredService<IPlaybackPositionStore>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<INotificationService>()));
+            item => new VideoViewerViewModel(item, sp.GetRequiredService<LibVlcProvider>(), sp.GetRequiredService<ISettingsService>(), sp.GetRequiredService<IPlaybackPositionStore>(), sp.GetRequiredService<IFolderAudioTrackStore>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<INotificationService>()));
 
         // ViewModels
         services.AddSingleton<MainViewModel>();
@@ -430,6 +431,8 @@ public partial class App : Application
         try { (_host?.Services.GetService<MainViewModel>() as IDisposable)?.Dispose(); } catch { }
         // Гарантированно сбрасываем позиции видео на диск перед выгрузкой хоста.
         try { _host?.Services.GetService<IPlaybackPositionStore>()?.Flush(); } catch { }
+        // То же для запомненных озвучек папок.
+        try { _host?.Services.GetService<IFolderAudioTrackStore>()?.Flush(); } catch { }
         // Корректно освобождаем singletons (SettingsService, PlaybackPositionStore, LibVlcProvider).
         try { _host?.Dispose(); } catch { }
         try { _pipeCts.Cancel(); } catch { }

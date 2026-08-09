@@ -34,6 +34,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     private readonly LibVlcProvider _provider;
     private readonly ISettingsService _settings;
     private readonly IPlaybackPositionStore _positions;
+    private readonly IFolderAudioTrackStore _folderTracks;
     private readonly IDialogService _dialog;
     private readonly INotificationService _notify;
 
@@ -158,6 +159,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         LibVlcProvider provider,
         ISettingsService settings,
         IPlaybackPositionStore positions,
+        IFolderAudioTrackStore folderTracks,
         IDialogService dialog,
         INotificationService notify)
     {
@@ -165,6 +167,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         _provider = provider;
         _settings = settings;
         _positions = positions;
+        _folderTracks = folderTracks;
         _dialog = dialog;
         _notify = notify;
         _playback = new VideoPlaybackService(provider);
@@ -272,12 +275,21 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         if (_settings.Settings.RememberRatePerFile && stored?.Rate is > 0)
             _pendingRate = ClampRate(stored.Rate!.Value);
 
-        // Аудиодорожка: запомненная для файла. Применяется в OnPlaying (список дорожек
-        // появляется только после старта воспроизведения). Id может сместиться, если файл
-        // пересобран, — есть запасной поиск по имени.
+        // Аудиодорожка. Приоритет: 1) дефолт ПАПКИ (сезона) — он важнее пер-файловой памяти
+        // (решение пользователя); 2) запомненная для конкретного файла; 3) дорожка по умолчанию.
+        // Применяется в OnPlaying (список дорожек появляется только после старта воспроизведения).
+        // Id может сместиться, если файл пересобран, — есть запасной поиск по имени.
         _pendingAudioTrackId = null;
         _pendingAudioTrackName = null;
-        if (_settings.Settings.RememberAudioTrackPerFile && stored is { AudioTrackId: not null })
+        var folderTrack = _settings.Settings.RememberAudioTrackPerFolder
+            ? _folderTracks.Get(Item.DirectoryPath)
+            : null;
+        if (folderTrack is { AudioTrackId: not null })
+        {
+            _pendingAudioTrackId = folderTrack.AudioTrackId;
+            _pendingAudioTrackName = folderTrack.AudioTrackName;
+        }
+        else if (_settings.Settings.RememberAudioTrackPerFile && stored is { AudioTrackId: not null })
         {
             _pendingAudioTrackId = stored.AudioTrackId;
             _pendingAudioTrackName = stored.AudioTrackName;
@@ -590,6 +602,16 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         _pendingAudioTrackName = FindAudioTrackName(id);
         if (_settings.Settings.RememberAudioTrackPerFile)
             SavePosition();
+        // Память ПАПКИ (сезона): выбор реальной дорожки (>0) становится дефолтом папки —
+        // остальные файлы папки откроются с этой озвучкой (если она у них есть). Выбор
+        // «По умолчанию» (0) сбрасывает дефолт папки (решение пользователя).
+        if (_settings.Settings.RememberAudioTrackPerFolder)
+        {
+            if (id > 0)
+                _folderTracks.Set(Item.DirectoryPath, id, _pendingAudioTrackName);
+            else
+                _folderTracks.Clear(Item.DirectoryPath);
+        }
     }
 
     private string? FindAudioTrackName(int id)
