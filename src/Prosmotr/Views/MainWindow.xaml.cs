@@ -335,6 +335,13 @@ public partial class MainWindow : FluentWindow
         switch (key)
         {
             case Key.Left:
+                // Магнет-стриминг: ← = перемотка назад на 10 с (до этой ветки стрелки
+                // «съедались» case-ом ниже — он возвращает true даже без навигации).
+                if (_vm.CurrentContent is TorrentStreamViewModel torrentBack)
+                {
+                    torrentBack.SeekToCommand.Execute(Math.Max(0, torrentBack.PositionMs - 10_000));
+                    return true;
+                }
                 if (_vm.CurrentContent is VideoViewerViewModel videoBack
                     && (_settings.Settings.ArrowKeysSeekVideo || _vm.IsFullScreen))
                 {
@@ -344,6 +351,12 @@ public partial class MainWindow : FluentWindow
                     _vm.PreviousCommand.Execute(null);
                 return true;
             case Key.Right:
+                // Магнет-стриминг: → = перемотка вперёд на 10 с.
+                if (_vm.CurrentContent is TorrentStreamViewModel torrentFwd)
+                {
+                    torrentFwd.SeekToCommand.Execute(Math.Min(torrentFwd.LengthMs, torrentFwd.PositionMs + 10_000));
+                    return true;
+                }
                 if (_vm.CurrentContent is VideoViewerViewModel videoFwd
                     && (_settings.Settings.ArrowKeysSeekVideo || _vm.IsFullScreen))
                 {

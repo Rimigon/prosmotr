@@ -82,6 +82,15 @@
                      (как в основном плеере). Под панелью выбора/управления в z-порядке. -->
                 <Border x:Name="ClickArea" Grid.Row="0" Background="Transparent" />
 
+                <!-- Плашка скачивания в углу: скрывается вместе с панелью (вариант А).
+                     IsHitTestVisible=False — клики проходят на ClickArea (пауза). -->
+                <Border x:Name="DownloadBadge" Grid.Row="0" VerticalAlignment="Top" HorizontalAlignment="Right"
+                        Margin="0,14,14,0" Background="#B3000000" CornerRadius="6" Padding="10,5"
+                        Visibility="Collapsed" IsHitTestVisible="False">
+                    <TextBlock Text="{Binding DownloadSummaryText, Mode=OneWay}" Foreground="White"
+                               FontSize="12" Opacity="0.9" />
+                </Border>
+
                 <!-- Индикатор смены скорости (как в основном плеере) -->
                 <Border Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center"
                         Background="#AA000000" CornerRadius="10" Padding="22,12"
@@ -183,13 +192,21 @@
                         </TextBlock>
 
                         <!-- Таймлайн (в пределах скачанного; перемотка из code-behind) -->
-                        <Slider x:Name="Timeline" Grid.Column="2" VerticalAlignment="Center" Margin="0,0,12,0"
-                                Minimum="0" Maximum="{Binding LengthMs, Mode=OneWay}" Value="{Binding PositionMs, Mode=OneWay}"
-                                IsMoveToPointEnabled="True"
-                                Thumb.DragStarted="OnTimelineDragStarted"
-                                Thumb.DragCompleted="OnTimelineDragCompleted"
-                                PreviewMouseLeftButtonUp="OnTimelineMouseUp"
-                                AutomationProperties.Name="Таймлайн" />
+                        <Grid Grid.Column="2" VerticalAlignment="Center" Margin="0,0,12,0">
+                            <!-- Диапазон скачанного: светлая полоса за ползунком — видно,
+                                 докуда можно перемотать без ожидания и как догоняет загрузка. -->
+                            <Border Height="4" CornerRadius="2" Background="#33FFFFFF" VerticalAlignment="Center">
+                                <Border x:Name="DownloadedFill" Height="4" CornerRadius="2"
+                                        Background="#8AFFFFFF" HorizontalAlignment="Left" Width="0" />
+                            </Border>
+                            <Slider x:Name="Timeline" VerticalAlignment="Center"
+                                    Minimum="0" Maximum="{Binding LengthMs, Mode=OneWay}" Value="{Binding PositionMs, Mode=OneWay}"
+                                    IsMoveToPointEnabled="True"
+                                    Thumb.DragStarted="OnTimelineDragStarted"
+                                    Thumb.DragCompleted="OnTimelineDragCompleted"
+                                    PreviewMouseLeftButtonUp="OnTimelineMouseUp"
+                                    AutomationProperties.Name="Таймлайн" />
+                        </Grid>
 
                         <!-- Mute -->
                         <ui:Button Grid.Column="3" Appearance="Transparent" ToolTip="Звук (M)" Margin="4,0,0,0"

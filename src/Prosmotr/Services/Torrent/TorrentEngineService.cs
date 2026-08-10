@@ -150,6 +150,14 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
             StartProgressTimer(session, manager);
             AppLog.Write($"[Torrent] Selected file: {selected.Path} ({selected.Length} bytes)");
 
+            // ВАЖНО (причина «перекачки всего файла при каждом открытии»): MonoTorrent грузит
+            // fast-resume только в AddAsync, а для магнета в этот момент метаданных ещё нет
+            // (!HasMetadata → MaybeLoadFastResumeAsync выходит рано) — после прихода метаданных
+            // загрузка НИКОГДА не повторяется → bitfield всегда пустой. Загружаем вручную:
+            // остановка (LoadFastResumeAsync требует Stopped) → загрузка → запуск. Поток ещё
+            // не создан — перезапуск менеджера безопасен.
+            await LoadSavedFastResumeAsync(manager);
+
             // prebuffer: true — скачивает первый и последний куски до готовности потока.
             // Это блокирующий вызов: куски должны прийти от пиров (или из fast-resume).
             AppLog.Write("[Torrent] CreateStreamAsync(prebuffer)...");
@@ -189,6 +197,8 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
     private void StartProgressTimer(TorrentSession session, TorrentManager manager)
     {
         _progressTimer?.Stop();
+        _progressTicks = 0;
+        _wasComplete = false;
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _progressTimer.Tick += (_, _) =>
         {
@@ -202,6 +212,21 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
                     ? (long)(session.TotalBytes * (1 - session.DownloadedPercent / 100.0))
                     : 0L;
                 session.EtaSeconds = TorrentStats.ComputeEtaSeconds(remaining, manager.Monitor.DownloadRate);
+
+                // Сохранение fast-resume: автосохранение MonoTorrent срабатывает только при
+                // успешной остановке, а StopAsync(2s) с таймаутом может её прервать → битфилд
+                // терялся и при повторном открытии движок перекачивал ВЕСЬ файл заново.
+                // Пишем периодически (каждые 10 с) и сразу при завершении докачки.
+                _progressTicks++;
+                if (session.DownloadedPercent >= 99.9 && !_wasComplete)
+                {
+                    _wasComplete = true;
+                    _ = SaveFastResumeAsync(manager);
+                }
+                else if (_progressTicks % 10 == 0)
+                {
+                    _ = SaveFastResumeAsync(manager);
+                }
             }
             catch (Exception ex)
             {
@@ -210,6 +235,39 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
         };
         _progressTimer.Start();
     }
+
+    private async Task SaveFastResumeAsync(TorrentManager manager)
+    {
+        try { await manager.SaveFastResumeAsync(); }
+        catch (Exception ex) { AppLog.Error("Torrent save fastresume", ex); }
+    }
+
+    /// <summary>Ручная загрузка fast-resume после прихода метаданных магнета (см. комментарий
+    /// в InitSessionAsync — MonoTorrent сам для магнетов не загружает).</summary>
+    private async Task LoadSavedFastResumeAsync(TorrentManager manager)
+    {
+        var fastResumePath = _engine!.Settings.GetFastResumePath(manager.InfoHashes);
+        if (!File.Exists(fastResumePath)) return;
+        try
+        {
+            if (!FastResume.TryLoad(fastResumePath, out var fastResume)) return;
+            AppLog.Write($"[Torrent] Loading fastresume: {fastResume.Bitfield.PercentComplete:0.0}%");
+
+            await manager.StopAsync(TimeSpan.FromSeconds(5));
+            await manager.LoadFastResumeAsync(fastResume);
+            AppLog.Write("[Torrent] FastResume loaded OK");
+            await manager.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Torrent load fastresume", ex);
+            // Если остановка сорвалась — хотя бы вернуть менеджер в рабочее состояние.
+            try { if (manager.State == TorrentState.Stopped) await manager.StartAsync(); } catch { }
+        }
+    }
+
+    private int _progressTicks;
+    private bool _wasComplete;
 
     public async Task CloseSessionAsync()
     {
@@ -235,6 +293,11 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
             if (manager != null)
             {
                 var deleteData = _settings.Settings.DeleteTorrentCacheOnExit;
+                // ЯВНО сохраняем fast-resume ДО остановки: автосохранение срабатывает только при
+                // успешном переходе в Stopped, а StopAsync(2s) может прервать остановку → битфилд
+                // потерян → следующее открытие перекачивает всё заново (см. StartProgressTimer).
+                try { await manager.SaveFastResumeAsync(); }
+                catch (Exception ex) { AppLog.Error("TorrentEngine close save fastresume", ex); }
                 // RemoveAsync требует State == Stopped (иначе TorrentException).
                 // StopAsync с таймаутом: не блокируем закрытие приложения дольше 2 с
                 // (сеть/пиры могут тормозить остановку менеджера).
@@ -254,6 +317,42 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
     }
 
     public Task ShutdownAsync() => CloseSessionAsync();
+
+    public long GetResumeStartMs(long targetMs, long lengthMs, long totalBytes)
+    {
+        lock (_gate)
+        {
+            var manager = _manager;
+            var torrent = manager?.Torrent;
+            if (manager == null || torrent == null || lengthMs <= 0 || totalBytes <= 0)
+                return targetMs;
+
+            // Смещение выбранного файла внутри торрента (для мульти-файловых раздач).
+            long fileOffset = 0;
+            if (_active?.SelectedFilePath != null && _active.SaveDirectory != null)
+            {
+                var file = manager.Files.FirstOrDefault(f => string.Equals(
+                    Path.Combine(_active.SaveDirectory, f.Path),
+                    _active.SelectedFilePath, StringComparison.OrdinalIgnoreCase));
+                if (file != null) fileOffset = file.OffsetInTorrent;
+            }
+
+            var bitfield = manager.Bitfield;
+            var bytesPerMs = (double)totalBytes / lengthMs;
+            var targetOffset = fileOffset + (long)(targetMs * bytesPerMs);
+            var startPiece = torrent.ByteOffsetToPieceIndex(targetOffset);
+            var pieceCount = torrent.PieceCount();
+            for (int i = startPiece; i < pieceCount; i++)
+            {
+                if (bitfield[i])
+                {
+                    var pieceStart = Math.Max(0, torrent.PieceIndexToByteOffset(i) - fileOffset);
+                    return (long)(pieceStart / bytesPerMs);
+                }
+            }
+            return 0; // после целевой точки скачанного нет — начнём с начала
+        }
+    }
 
     public void Dispose()
     {

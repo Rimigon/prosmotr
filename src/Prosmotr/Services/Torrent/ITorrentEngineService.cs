@@ -22,4 +22,9 @@ public interface ITorrentEngineService
 
     /// <summary>Остановить все сессии (для App.OnExit).</summary>
     Task ShutdownAsync();
+
+    /// <summary>Ближайшая ПОЛНОСТЬЮ скачанная позиция ≥ targetMs (мс); 0 — ничего не скачано.
+    /// Нужно для resume: LocalStream.ReadAsync блокируется на недокачанных кусках (поллит
+    /// Bitfield по 100 мс), поэтому перематывать можно только на кусок, который уже на диске.</summary>
+    long GetResumeStartMs(long targetMs, long lengthMs, long totalBytes);
 }

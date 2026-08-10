@@ -407,6 +407,7 @@ public partial class App : Application
         services.AddTransient<Func<TorrentSession, Func<Task>, TorrentStreamViewModel>>(sp =>
             (session, closeRequested) => new TorrentStreamViewModel(
                 session,
+                sp.GetRequiredService<ITorrentEngineService>(),
                 sp.GetRequiredService<LibVlcProvider>(),
                 sp.GetRequiredService<ISettingsService>(),
                 sp.GetRequiredService<IPlaybackPositionStore>(),

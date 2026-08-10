@@ -50,6 +50,8 @@ public sealed partial class TorrentStreamView : UserControl
         // тик через 3 с прячет — только в фазе воспроизведения и не при буферизации/паузе.
         _hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         _hideTimer.Tick += (_, _) => HideControlsIfIdle();
+        // Полоса скачанного на таймлайне — пересчитывать при ресайзе окна.
+        Timeline.SizeChanged += (_, _) => UpdateDownloadedFill();
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -123,6 +125,7 @@ public sealed partial class TorrentStreamView : UserControl
     {
         if (_vm is { IsReadyToPlay: true })
             ControlBar.Visibility = Visibility.Visible;
+        ApplyChromeVisibility();
         RestartHideTimer();
     }
 
@@ -141,6 +144,42 @@ public sealed partial class TorrentStreamView : UserControl
         if (TrackPicker.Visibility == Visibility.Visible) return; // открыт выбор — не прятать
         if (_isTimelineDragging) return;             // тянем таймлайн — не прятать
         ControlBar.Visibility = Visibility.Collapsed;
+        ApplyChromeVisibility();
+    }
+
+    /// <summary>Единая видимость chrome: панель + плашка скачивания + курсор.
+    /// Плашка — только пока идёт загрузка (<100%) и панель видна (вариант А).</summary>
+    private void ApplyChromeVisibility()
+    {
+        var show = ControlBar.Visibility == Visibility.Visible;
+        DownloadBadge.Visibility = show && _vm is { DownloadedPercent: < 99.9 }
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        UpdateCursor();
+    }
+
+    /// <summary>Скрыть/показать курсор вместе с панелью. Ставим на Overlay (а не на UserControl)
+    /// — только так он применяется над областью видео внутри airspace LibVLC, + синхронно
+    /// на окне (gotcha 5.12). Во время буферизации курсор оставляем видимым.</summary>
+    private void UpdateCursor()
+    {
+        if (_vm == null) return;
+        var hide = ControlBar.Visibility != Visibility.Visible
+                   && !_vm.IsBuffering
+                   && _vm.IsReadyToPlay;
+        Overlay.Cursor = hide ? Cursors.None : Cursors.Arrow;
+        if (Window.GetWindow(this) is { } w)
+            w.Cursor = hide ? Cursors.None : Cursors.Arrow;
+    }
+
+    /// <summary>Ширина полосы скачанного диапазона на таймлайне.</summary>
+    private void UpdateDownloadedFill()
+    {
+        if (DownloadedFill == null) return;
+        var width = _vm == null
+            ? 0
+            : Math.Max(0, Timeline.ActualWidth * (_vm.DownloadedPercent / 100.0));
+        DownloadedFill.Width = width;
     }
 
     /// <summary>PageDown (ToggleChromeKey): показать/скрыть панель, как в основном плеере.</summary>
@@ -150,6 +189,7 @@ public sealed partial class TorrentStreamView : UserControl
         ControlBar.Visibility = ControlBar.Visibility == Visibility.Visible
             ? Visibility.Collapsed
             : Visibility.Visible;
+        ApplyChromeVisibility();
         _hideTimer.Stop();
         if (ControlBar.Visibility == Visibility.Visible && _vm.AutoHideControls)
             _hideTimer.Start();
@@ -218,6 +258,10 @@ public sealed partial class TorrentStreamView : UserControl
                     ShowControls();
                     RestartHideTimer();
                 }
+                ApplyChromeVisibility();
+                break;
+            case nameof(TorrentStreamViewModel.DownloadedPercent):
+                UpdateDownloadedFill();
                 break;
             case nameof(TorrentStreamViewModel.IsPlaying):
                 // На паузе панель всегда видна (как в основном плеере).

@@ -25,6 +25,7 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
         { 0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f, 4f };
 
     private readonly TorrentSession _session;
+    private readonly ITorrentEngineService _torrents;
     private readonly LibVlcProvider _vlc;
     private readonly ISettingsService _settings;
     private readonly IPlaybackPositionStore _positions;
@@ -62,6 +63,7 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
 
     public TorrentStreamViewModel(
         TorrentSession session,
+        ITorrentEngineService torrents,
         LibVlcProvider vlc,
         ISettingsService settings,
         IPlaybackPositionStore positions,
@@ -70,6 +72,7 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
         Func<Task> closeRequested)
     {
         _session = session;
+        _torrents = torrents;
         _vlc = vlc;
         _settings = settings;
         _positions = positions;
@@ -93,6 +96,9 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
     public string SpeedText => $"{TorrentStats.FormatBytes(_session.DownloadSpeed)}/с";
     public string UploadText => $"{TorrentStats.FormatBytes(_session.UploadSpeed)}/с";
     public string PeersText => $"{_session.PeersCount}";
+    /// <summary>Компактная строка для плашки «скачивание» в углу плеера.</summary>
+    public string DownloadSummaryText =>
+        $"{DownloadedPercent:0}% · {TorrentStats.FormatBytes(_session.DownloadSpeed)}/с ↓ · {_session.PeersCount} пиров";
     public string EtaText => _session.EtaSeconds is long eta
         ? $"Осталось ~{FormatEta(eta)}"
         : "Оценка недоступна";
@@ -135,16 +141,19 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
                 break;
             case nameof(TorrentSession.DownloadedPercent):
                 OnPropertyChanged(nameof(DownloadedPercent));
+                OnPropertyChanged(nameof(DownloadSummaryText));
                 UpdateBuffering();
                 break;
             case nameof(TorrentSession.DownloadSpeed):
                 OnPropertyChanged(nameof(SpeedText));
+                OnPropertyChanged(nameof(DownloadSummaryText));
                 break;
             case nameof(TorrentSession.UploadSpeed):
                 OnPropertyChanged(nameof(UploadText));
                 break;
             case nameof(TorrentSession.PeersCount):
                 OnPropertyChanged(nameof(PeersText));
+                OnPropertyChanged(nameof(DownloadSummaryText));
                 break;
             case nameof(TorrentSession.EtaSeconds):
                 OnPropertyChanged(nameof(EtaText));
@@ -169,8 +178,11 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
         };
         _player = player;
         // Кастомный IO: VLC сам тянет данные из MonoTorrent-потока (блокирующее чтение
-        // — поток качает нужные куски на лету).
+        // — поток качает нужные куски на лету). Больший входной буфер заставляет VLC читать
+        // дальше вперёд, давая requester'у запас времени на докачку кусков (меньше стопов).
         _media = new Media(_vlc.LibVlc, new StreamMediaInput(_session.Stream));
+        _media.AddOption(":file-caching=2000");
+        _media.AddOption(":network-caching=2000");
 
         player.TimeChanged += OnTimeChanged;
         player.LengthChanged += OnLengthChanged;
@@ -298,31 +310,34 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
         });
     }
 
-    /// <summary>Отложенная перемотка к сохранённой позиции. Запускается только если целевая
-    /// позиция в пределах скачанного (с запасом 30 с) — иначе поток заблокирует чтение.</summary>
+    /// <summary>Отложенная перемотка к сохранённой позиции. Перематываем ТОЛЬКО на полностью
+    /// скачанный кусок: LocalStream.ReadAsync блокируется на недокачанных (поллит Bitfield
+    /// по 100 мс) → VLC встаёт и «подлагивает». Seek выполняется НЕ на UI-потоке: libvlc
+    /// set_time может блокировать, если входной поток застрял на чтении → иначе UI замрёт
+    /// без индикаторов.</summary>
     private async Task DelayedResumeAsync(long targetMs)
     {
         try { await Task.Delay(1500); } catch { return; }
         if (_disposed || _player == null || !_player.IsPlaying) return;
 
-        var downloadedMs = LengthMs > 0
-            ? (long)(LengthMs * _session.DownloadedPercent / 100.0)
-            : 0;
-        if (LengthMs > 0 && targetMs > downloadedMs + 30_000)
+        var safeMs = _torrents.GetResumeStartMs(targetMs, (long)LengthMs, _session.TotalBytes);
+        if (safeMs <= 0)
         {
-            AppLog.Write($"[Torrent] Resume SKIPPED: target={targetMs}ms beyond downloaded={downloadedMs}ms");
+            AppLog.Write($"[Torrent] Resume SKIPPED: no complete piece at/after {targetMs}ms");
             return;
         }
-        try
+
+        var player = _player;
+        var seek = Task.Run(() => { try { player.Time = safeMs; } catch { } });
+        var done = await Task.WhenAny(seek, Task.Delay(TimeSpan.FromSeconds(5)));
+        if (done != seek)
         {
-            _player.Time = targetMs;
-            PositionMs = targetMs;
-            AppLog.Write($"[Torrent] Resume seek -> {targetMs}ms (downloaded={downloadedMs}ms)");
+            // Входной поток застрял (недокачанный кусок) — не вешаем UI, пропускаем resume.
+            AppLog.Write($"[Torrent] Resume seek to {safeMs}ms TIMED OUT (input stalled)");
+            return;
         }
-        catch (Exception ex)
-        {
-            AppLog.Error("Torrent resume seek", ex);
-        }
+        PositionMs = safeMs;
+        AppLog.Write($"[Torrent] Resume seek -> {safeMs}ms (requested {targetMs}ms)");
     }
 
     private void OnEncounteredError(object? sender, EventArgs e)
@@ -468,6 +483,15 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
         _settings.SaveDebounced();
         VolumeBadgeText = FormatVolumeBadge(Volume, value);
         _ = FlashVolumeBadgeAsync();
+    }
+
+    partial void OnIsBufferingChanged(bool value)
+    {
+        // Диагностика подлагиваний: переходы буферизации с позицией и % скачанного.
+        if (value)
+            AppLog.Write($"[Torrent] Buffering START: pos={PositionMs:0}ms downloaded={_session.DownloadedPercent:0.0}%");
+        else
+            AppLog.Write($"[Torrent] Buffering END: pos={PositionMs:0}ms");
     }
 
     // --- Скорость (как в основном плеере; память на файл — PlaybackPositionStore) ---
