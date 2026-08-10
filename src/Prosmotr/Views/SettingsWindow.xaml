@@ -460,6 +460,54 @@
                     </Grid>
                 </Border>
 
+                <!-- МАГНЕТ-СТРИМИНГ -->
+                <TextBlock Text="Магнет-стриминг" Style="{StaticResource Section}" />
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Удалять скачанное при выходе" />
+                            <TextBlock Text="Выключено: файл остаётся в кэше и раздаётся, пока приложение открыто; при повторном открытии той же ссылки загрузка продолжается с места."
+                                       Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding DeleteTorrentCacheOnExit, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Открывать magnet-ссылки этим приложением" />
+                            <TextBlock Text="Клик по магнет-ссылке в браузере откроет «Просмотр» (регистрируется magnet: протокол). По умолчанию выключено."
+                                       Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding RegisterMagnetProtocol, Mode=TwoWay}" />
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Очистить кэш магнет-стриминга" />
+                            <TextBlock Text="Закрывает активную сессию и удаляет скачанные данные (папка %LOCALAPPDATA%\Prosmotr\torrents), включая записи позиций/скоростей."
+                                       Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ui:Button Grid.Column="1" Content="Очистить" Command="{Binding ClearTorrentCacheCommand}" />
+                    </Grid>
+                </Border>
+
             </StackPanel>
         </ScrollViewer>
 

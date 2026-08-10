@@ -10,6 +10,7 @@ using Prosmotr.Infrastructure;
 using Prosmotr.Models;
 using Prosmotr.Services;
 using Prosmotr.Services.Abstractions;
+using Prosmotr.Services.Torrent;
 using Prosmotr.Views;
 
 namespace Prosmotr.ViewModels;
@@ -98,6 +99,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         IDialogService dialog,
         IShellService shell,
         IRecentFilesService recent,
+        IRecentMagnetsService recentMagnets,
         IThemeService theme,
         IImageCache imageCache,
         IThumbnailService thumbnails,
@@ -105,9 +107,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         IPlaybackPositionStore positions,
         INotificationService notify,
         IDisplayTopologyService displayTopology,
+        ITorrentEngineService torrents,
         Func<MediaItem, ImageViewerViewModel> imageVmFactory,
         Func<MediaItem, VideoViewerViewModel> videoVmFactory,
-        Func<VideoViewerViewModel, PictureInPictureWindow> pipFactory)
+        Func<VideoViewerViewModel, PictureInPictureWindow> pipFactory,
+        Func<TorrentSession, Func<Task>, TorrentStreamViewModel> torrentVmFactory)
     {
         _library = library;
         _nav = nav;
@@ -116,6 +120,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _dialog = dialog;
         _shell = shell;
         _recent = recent;
+        _recentMagnets = recentMagnets;
         _theme = theme;
         _imageCache = imageCache;
         _vlc = vlc;
@@ -133,6 +138,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _imageVmFactory = imageVmFactory;
         _videoVmFactory = videoVmFactory;
         _pipFactory = pipFactory;
+        _torrents = torrents;
+        _torrentVmFactory = torrentVmFactory;
 
         ThumbnailStrip = new ThumbnailStripViewModel(thumbnails);
         ThumbnailStrip.SelectionRequested += (_, item) => _nav.MoveTo(item);
@@ -158,9 +165,17 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         CurrentContent = CreateEmptyState();
     }
 
-    /// <summary>Старт приложения: открыть файл из аргументов / последний / пустое состояние.</summary>
+    /// <summary>Старт приложения: magnet: аргумент / файл из аргументов / последний / пустое состояние.</summary>
     public async Task InitializeAsync(string[] args)
     {
+        // magnet: аргумент (клик по ссылке при зарегистрированном протоколе) — выше приоритет.
+        var magnetArg = args.FirstOrDefault(MagnetLinkParser.IsValidMagnet);
+        if (magnetArg != null)
+        {
+            await OpenMagnetAsync(magnetArg);
+            return;
+        }
+
         var path = args.FirstOrDefault(a => File.Exists(a) || Directory.Exists(a));
         if (path != null)
         {
@@ -174,6 +189,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         {
             await OpenPathAsync(_settings.Settings.LastFilePath!);
         }
+
+        // Пустой старт: в буфере обмена валидная магнет-ссылка → предложить вставить
+        // (после отрисовки окна, чтобы диалог не выскочил поверх загрузки).
+        Application.Current?.Dispatcher.BeginInvoke(
+            new Action(TryOfferClipboardMagnet), DispatcherPriority.ContextIdle);
     }
 
     // --- Реакция на изменения состояния ---
@@ -254,6 +274,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
             {
                 disposable.Dispose();
+                // Торрент-сессия закрывается ПОСЛЕ освобождения плеера (поток движка),
+                // иначе VLC читал бы закрытый поток.
+                if (disposable is TorrentStreamViewModel) _ = _torrents.CloseSessionAsync();
                 if (ReferenceEquals(_pendingDisposal, disposable)) _pendingDisposal = null;
             }), DispatcherPriority.Background);
         }
@@ -343,7 +366,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     private EmptyStateViewModel CreateEmptyState() =>
-        new(_recent, OpenFile, OpenFolder, OpenPathAsync);
+        new(_recent, _recentMagnets, OpenFile, OpenFolder, OpenPathAsync, OpenMagnetAsync,
+            () => { OpenMagnetCommand.Execute(null); return Task.CompletedTask; });
 
     private void RefreshCommandStates()
     {
@@ -472,9 +496,15 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         _openCts?.Cancel();
         _openCts?.Dispose();
+        _torrentCts.Cancel();
+        _torrentCts.Dispose();
         _slideshowTimer.Stop();
         ThumbnailStrip.Dispose();
         WeakReferenceMessenger.Default.UnregisterAll(this);
+
+        // Торрент-движок: стоп сессии (если активна). Ограниченное ожидание — не блокируем
+        // выход навсегда, если сеть тормозит.
+        try { _torrents.ShutdownAsync().Wait(TimeSpan.FromSeconds(1)); } catch { }
 
         // Если Background-операция освобождения старого контента ещё не отработала
         // (быстрая навигация видео→фото + закрытие) — освобождаем синхронно ДО выгрузки LibVLC.

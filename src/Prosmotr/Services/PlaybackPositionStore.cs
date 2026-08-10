@@ -55,6 +55,16 @@ public sealed class PlaybackPositionStore : IPlaybackPositionStore, IDisposable
         ScheduleFlush();
     }
 
+    public void RemoveAll(Func<string, bool> predicate)
+    {
+        lock (_gate)
+        {
+            foreach (var key in _map.Keys.Where(predicate).ToList())
+                _map.Remove(key);
+        }
+        Flush(); // сразу на диск — чистка кэша не должна «зависнуть» в дебаунсе
+    }
+
     private void ScheduleFlush()
     {
         // Не перезапускаем таймер на каждое сохранение, иначе при непрерывном

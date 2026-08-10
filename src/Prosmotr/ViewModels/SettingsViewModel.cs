@@ -1,10 +1,12 @@
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Prosmotr.Infrastructure;
 using Prosmotr.Models;
 using Prosmotr.Services.Abstractions;
+using Prosmotr.Services.Torrent;
 
 namespace Prosmotr.ViewModels;
 
@@ -15,6 +17,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private readonly IThemeService _theme;
     private readonly IFileAssociationService _assoc;
     private readonly IRecentFilesService _recent;
+    private readonly ITorrentCacheService _torrentCache;
+    private readonly IPlaybackPositionStore _positions;
 
     private bool _loading;
 
@@ -84,6 +88,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private bool _timelinePreviewPauseVideo;
     [ObservableProperty] private bool _matchExplorerSort;
     [ObservableProperty] private bool _integrateShell;
+    [ObservableProperty] private bool _deleteTorrentCacheOnExit;
+    [ObservableProperty] private bool _registerMagnetProtocol;
     [ObservableProperty] private bool _isAssociationsRegistered;
     [ObservableProperty] private string _exitKey = "End";
     [ObservableProperty] private string _toggleChromeKey = "PageDown";
@@ -93,12 +99,16 @@ public sealed partial class SettingsViewModel : ViewModelBase
         ISettingsService settings,
         IThemeService theme,
         IFileAssociationService assoc,
-        IRecentFilesService recent)
+        IRecentFilesService recent,
+        ITorrentCacheService torrentCache,
+        IPlaybackPositionStore positions)
     {
         _settings = settings;
         _theme = theme;
         _assoc = assoc;
         _recent = recent;
+        _torrentCache = torrentCache;
+        _positions = positions;
         LoadFromSettings();
     }
 
@@ -130,6 +140,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
         TimelinePreviewPauseVideo = s.TimelinePreviewPauseVideo;
         MatchExplorerSort = s.MatchExplorerSort;
         IntegrateShell = s.IntegrateShell;
+        DeleteTorrentCacheOnExit = s.DeleteTorrentCacheOnExit;
+        RegisterMagnetProtocol = s.RegisterMagnetProtocol;
         ExitKey = IsAllowedKey(s.ExitKey) ? s.ExitKey : "End";
         ToggleChromeKey = IsAllowedKey(s.ToggleChromeKey) ? s.ToggleChromeKey : "PageDown";
         FullScreenKey = IsAllowedKey(s.FullScreenKey) ? s.FullScreenKey : "F11";
@@ -186,6 +198,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
         s.TimelinePreviewPauseVideo = TimelinePreviewPauseVideo;
         s.MatchExplorerSort = MatchExplorerSort;
         s.IntegrateShell = IntegrateShell;
+        s.DeleteTorrentCacheOnExit = DeleteTorrentCacheOnExit;
+        s.RegisterMagnetProtocol = RegisterMagnetProtocol;
         s.ExitKey = ExitKey;
         s.ToggleChromeKey = ToggleChromeKey;
         s.FullScreenKey = FullScreenKey;
@@ -262,6 +276,23 @@ public sealed partial class SettingsViewModel : ViewModelBase
         IsAssociationsRegistered = _assoc.IsRegistered;
     }
 
+    partial void OnDeleteTorrentCacheOnExitChanged(bool value) => Commit();
+
+    partial void OnRegisterMagnetProtocolChanged(bool value)
+    {
+        Commit(immediate: true); // применять вживую: браузерные магнет-ссылки открываются сразу
+        if (_loading) return;
+        // Паттерн OnIntegrateShellChanged: реестр может быть недоступен (GPO) — не роняем,
+        // тумблер ресинхронизируем с фактическим состоянием.
+        try
+        {
+            if (value && !MagnetProtocolRegistration.IsRegistered) MagnetProtocolRegistration.Register();
+            else if (!value && MagnetProtocolRegistration.IsRegistered) MagnetProtocolRegistration.Unregister();
+        }
+        catch (Exception ex) { AppLog.Error("RegisterMagnetProtocol toggle", ex); }
+        RegisterMagnetProtocol = MagnetProtocolRegistration.IsRegistered;
+    }
+
     [RelayCommand]
     private void ToggleAssociations()
     {
@@ -276,6 +307,10 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     [RelayCommand] private void OpenDefaultApps() => _assoc.OpenDefaultAppsSettings();
     [RelayCommand] private void ClearRecent() => _recent.Clear();
+
+    /// <summary>Очистить кэш магнет-стриминга (общая логика — в ITorrentCacheService).</summary>
+    [RelayCommand]
+    private Task ClearTorrentCache() => _torrentCache.ClearAsync();
 
     // Для отображения скорости в списке («1,5×»).
     public static string FormatRate(float r) => r.ToString("0.##", CultureInfo.CurrentCulture) + "×";

@@ -10,6 +10,7 @@ using Prosmotr.Infrastructure;
 using Prosmotr.Models;
 using Prosmotr.Services;
 using Prosmotr.Services.Abstractions;
+using Prosmotr.Services.Torrent;
 using Prosmotr.ViewModels;
 using Prosmotr.Views;
 
@@ -140,9 +141,14 @@ public partial class App : Application
     private static string? ExtractPath(string[] args) =>
         args.FirstOrDefault(a => File.Exists(a) || Directory.Exists(a));
 
+    private static string? ExtractMagnet(string[] args) =>
+        args.FirstOrDefault(MagnetLinkParser.IsValidMagnet);
+
     private static void SendArgsToRunningInstance(string folderKey, string[] args)
     {
-        var path = ExtractPath(args);
+        // Для магнет-ссылки (клик в браузере при уже запущенном приложении) передаём
+        // саму ссылку, а не путь: иначе второй экземпляр ушлёт пустую строку и магнет потеряется.
+        var payload = ExtractMagnet(args) ?? ExtractPath(args) ?? string.Empty;
         try
         {
             using var client = new NamedPipeClientStream(".", PipeNameForKey(folderKey), PipeDirection.Out);
@@ -154,7 +160,7 @@ public partial class App : Application
                 catch (Exception) when (i < 9) { Thread.Sleep(100); }
             }
             using var writer = new StreamWriter(client) { AutoFlush = true };
-            writer.WriteLine(path ?? string.Empty);
+            writer.WriteLine(payload);
         }
         catch { /* не удалось — просто откроется новое окно в худшем случае */ }
     }
@@ -199,7 +205,7 @@ public partial class App : Application
         });
     }
 
-    private void OnSecondInstance(string path)
+    private void OnSecondInstance(string payload)
     {
         // Гонка с завершением: pipe мог сработать, когда хост уже выгружается —
         // обращение к Services тогда бросило бы ObjectDisposedException.
@@ -207,8 +213,11 @@ public partial class App : Application
         try
         {
             var vm = Services.GetRequiredService<MainViewModel>();
-            if (!string.IsNullOrEmpty(path))
-                _ = vm.OpenPathAsync(path);
+            // Магнет-ссылка (клик в браузере при запущенном приложении) или путь к файлу/папке.
+            if (MagnetLinkParser.IsValidMagnet(payload))
+                _ = vm.OpenMagnetAsync(payload);
+            else if (!string.IsNullOrEmpty(payload))
+                _ = vm.OpenPathAsync(payload);
 
             if (MainWindow != null)
             {
@@ -339,6 +348,12 @@ public partial class App : Application
             // всегда указывал на актуальный exe (debug или опубликованный).
             if (settings.Settings.IntegrateShell)
                 assoc.Register();
+            // magnet: протокол — по настройке (выкл по умолчанию). Unregister идемпотентен:
+            // убирает запись, если её оставила более старая версия/отключили в настройках.
+            if (settings.Settings.RegisterMagnetProtocol)
+                MagnetProtocolRegistration.Register();
+            else
+                MagnetProtocolRegistration.Unregister();
         }
         catch (Exception ex)
         {
@@ -369,6 +384,7 @@ public partial class App : Application
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<IShellService, ShellService>();
         services.AddSingleton<IRecentFilesService, RecentFilesService>();
+        services.AddSingleton<IRecentMagnetsService, RecentMagnetsService>();
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<IImageDecodingService, ImageDecodingService>();
         services.AddSingleton<IImageCache, ImageCache>();
@@ -377,6 +393,8 @@ public partial class App : Application
         services.AddSingleton<IFolderAudioTrackStore, FolderAudioTrackStore>();
         services.AddSingleton<IFileAssociationService, FileAssociationService>();
         services.AddSingleton<IDisplayTopologyService, DisplayTopologyService>();
+        services.AddSingleton<ITorrentEngineService, TorrentEngineService>();
+        services.AddSingleton<ITorrentCacheService, TorrentCacheService>();
         services.AddSingleton<LibVlcProvider>();
         services.AddSingleton<INotificationService, NotificationService>();
 
@@ -385,6 +403,16 @@ public partial class App : Application
             item => new ImageViewerViewModel(item, sp.GetRequiredService<IImageCache>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<INotificationService>()));
         services.AddTransient<Func<MediaItem, VideoViewerViewModel>>(sp =>
             item => new VideoViewerViewModel(item, sp.GetRequiredService<LibVlcProvider>(), sp.GetRequiredService<ISettingsService>(), sp.GetRequiredService<IPlaybackPositionStore>(), sp.GetRequiredService<IFolderAudioTrackStore>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<INotificationService>()));
+        // Фабрика VM магнет-стриминга: closeRequested поставляет MainViewModel (без циклической DI-зависимости).
+        services.AddTransient<Func<TorrentSession, Func<Task>, TorrentStreamViewModel>>(sp =>
+            (session, closeRequested) => new TorrentStreamViewModel(
+                session,
+                sp.GetRequiredService<LibVlcProvider>(),
+                sp.GetRequiredService<ISettingsService>(),
+                sp.GetRequiredService<IPlaybackPositionStore>(),
+                sp.GetRequiredService<IDialogService>(),
+                sp.GetRequiredService<INotificationService>(),
+                closeRequested));
 
         // ViewModels
         services.AddSingleton<MainViewModel>();
@@ -396,6 +424,8 @@ public partial class App : Application
             sp.GetRequiredService<IServiceProvider>()));
         services.AddTransient<SettingsWindow>();
         services.AddTransient<FilePropertiesWindow>();
+        services.AddTransient<MagnetInputWindow>();
+        services.AddTransient<TorrentCacheWindow>();
 
         // Picture-in-Picture
         services.AddTransient<Func<VideoViewerViewModel, PictureInPictureWindow>>(sp =>

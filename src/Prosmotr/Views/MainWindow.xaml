@@ -29,6 +29,9 @@
         <DataTemplate DataType="{x:Type vm:PictureInPicturePlaceholderViewModel}">
             <views:PictureInPicturePlaceholderView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:TorrentStreamViewModel}">
+            <views:TorrentStreamView />
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -136,6 +139,10 @@
                     </ui:Button>
                     <ui:Button Appearance="Transparent" ToolTip="Настройки" Command="{Binding OpenSettingsCommand}">
                         <ui:Button.Icon><ui:SymbolIcon Symbol="Settings24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
+                    </ui:Button>
+                    <ui:Button Appearance="Transparent" ToolTip="Кэш магнет-стриминга"
+                               Command="{Binding OpenTorrentCacheCommand}">
+                        <ui:Button.Icon><ui:SymbolIcon Symbol="Broom24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
                     </ui:Button>
                 </StackPanel>
             </Grid>

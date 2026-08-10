@@ -1,7 +1,7 @@
 # AGENTS.md
 
 > Автоматически поддерживаемая сводка контекста для AI-агентов.
-> Последнее обновление: 2026-08-09 20:51:59 UTC
+> Последнее обновление: 2026-08-10 15:23:22 UTC
 
 ## Project Overview
 
@@ -1504,3 +1504,67 @@ Magick.NET с нормализацией ICC-профилей (см. §5.5).
    Проверь у краёв окна — панель не вылезает за границу. Включи «Пауза при наведении» — наведение ставит
    видео на паузу, уход мыши возобновляет (если видео и так было на паузе — остаётся). Выключи тумблер
    «Превью при наведении» — ничего не показывается. В PiP-окне и на мини-таймлайне превью нет (вне скоупа).
+8. **Магнет-стриминг:** на пустом экране кнопка «Смотреть по магнет-ссылке…» → вставить ссылку → экран
+   загрузки (название, %, скорость, пиры) → через ~10–30 с начинается воспроизведение. Перемотка назад
+   мгновенная, вперёд за скачанный диапазон — оверлей «Докачивается…». Проверь magnet: аргумент запуском
+   `app\Prosmotr.exe "<magnet>"` и тумблер «Открывать magnet-ссылки этим приложением» (клик по ссылке в браузере).
+
+### 5.36. Магнет-стриминг (MonoTorrent 3.0.2)
+
+- **Streaming-режим — единственный штатный «последовательный» механизм MonoTorrent.** В обычном режиме
+  (`AddAsync`) куски берутся rarest-first — файл с дырами VLC играть не может. Поэтому: `AddStreamingAsync`
+  - `StreamProvider.CreateStreamAsync(file, prebuffer: true)`. `prebuffer: true` скачивает первый и последний
+  куски до готовности потока — это штатно решает MP4 с moov в конце (VLC получает метаданные сразу).
+- **`AddStreamingAsync` НЕ автозапускает менеджер — обязателен явный `manager.StartAsync()`** (подтверждено
+  примером LVST автора LibVLCSharp). Без него метаданные магнета не скачиваются и сессия висит в ResolvingMetadata.
+- **VLC играет поток через кастомный IO:** `new Media(libVlc, new StreamMediaInput(stream))` (`StreamMediaInput`
+  есть в LibVLCSharp 3.9.7.1). Данные при этом всё равно пишутся на диск (DiskManager) — кэш + раздача работают.
+- **Один поток на менеджер:** `StreamProvider` разрешает один активный поток (`CreateStreamAsync` бросает, если
+  предыдущий не Disposed). В v1 сессия одна — ограничение не проявляется.
+- **Сессия закрывается при уходе с экрана.** `CloseSession` (`RemoveAsync(manager, KeepAllData)`) сохраняет
+  данные и fast-resume — повторная вставка той же ссылки продолжает с места. Данные удаляются только при
+  `DeleteTorrentCacheOnExit` (`CacheDataAndDownloadedData`).
+- **Буферизация при перемотке вперёд:** `LocalStream` блокирует чтение, пока куски не придут; оверлей
+  «Докачивается…» управляется `TorrentStats.IsBeyondDownloaded(position, length, percent, slack)` (ползунок
+  VLC уходит за границу скачанного).
+- **MonoTorrent 3.0.2 API (отличия от master-ветки):** `EngineSettings` только через `EngineSettingsBuilder`
+  (свойства `{ get; }`); число пиров — `manager.OpenConnections` (не `Peers.ConnectedPeers` — internal);
+  хеш — `magnetLink.InfoHashes.V1.ToHex()`.
+- **Кэш:** `%LOCALAPPDATA%\Prosmotr\torrents\<infoHash>\data` (данные) + `.cache` (metadata/fast-resume).
+  `EngineSettings.AutoSaveLoadFastResume = true` — MonoTorrent сам сохраняет/загружает fast-resume.
+- **magnet: протокол** — регистрация в HKCU `Software\Classes\magnet` (паттерн `FileAssociationService`),
+  тумблер `RegisterMagnetProtocol` (выкл по умолчанию — не перехватываем ссылки без согласия). При старте
+  `TryIntegrateShell` регистрирует/убирает по настройке; переключение тумблера применяется вживую.
+- **Входы:** кнопка на стартовом экране → `MagnetInputWindow` (валидация `MagnetLinkParser`); подхват магнета
+  из буфера обмена при пустом старте; `magnet:` аргумент при запуске (выше приоритет, чем файл).
+- **Плеер:** `TorrentStreamViewModel` создаёт `MediaPlayer` на общем `LibVlcProvider` с
+  `EnableHardwareDecoding = false` (консистентно с основным плеером), полный экран — через
+  `DeferFullScreenTransition` (gotcha 5.12/5.16).
+- **Управление как в основном плеере:** скорость (кнопка-меню + бейдж), громкость ↑/↓ с бейджем,
+  аудиодорожки и субтитры (встроенные + внешний файл через `AddSlave`). Скорость/озвучка запоминаются
+  по файлу — ключ `PlaybackPositionStore` = путь к файлу в кэше (`<cache>\<hash>\data\...`), стабильный
+  для infoHash. Горячие клавиши (Space/M/↑/↓/←/→/Esc) — в `MainWindow.TryHandleHotkey` для
+  `TorrentStreamViewModel` (работают над airspace VLC через `ThreadPreprocessMessage`).
+- **Два бага, на которых легко споткнуться (уже исправлены):** (1) `PositionMs/LengthMs` обязаны быть
+  `double` — конвертер `MsToTime` и слайдер принимают double, с `long` время всегда «0:00»;
+  (2) `ProgressBar.Value`/`Slider.Maximum`/`Run.Text` биндятся TwoWay по умолчанию — read-only прокси
+  из `TorrentSession` требуют явного `Mode=OneWay`, иначе `InvalidOperationException` при отрисовке.
+- **Ре-райз прокси → пачка Play() → зависание.** `OnSessionPropertyChanged` НЕ должен поднимать все
+  прокси разом: таймер движка меняет 5 свойств/сек, и повторный `IsReadyToPlay` заставлял вью звать
+  `AttachPlayerAndPlay` → `Play()` 10+ раз подряд — LibVLC вешался на повторных Play во время старта.
+  Фикс: точечные прокси по имени свойства + `StartPlayback` строго однократен (`_playbackStarted`)
+  - вью запускает плеер только на переходе `IsReadyToPlay` false→true.
+- **Восстановление (resume/скорость/озвучка) — в `CreatePlayer` из `PlaybackPositionStore` по ключу
+  `SelectedFilePath`; применяется в `OnPlaying`** (списки дорожек доступны только после старта).
+  Resume-seek: отложенный (~1.5 с, чтобы отрисовался первый кадр) и ТОЛЬКО если позиция в пределах
+  скачанного (иначе стриминг-поток блокируется на недоскачанных кусках → чёрный экран).
+- **События LibVLCSharp приходят с потоков libvlc — обязателен маршалинг на UI.** В 3.9.7.1 НЕТ
+  SynchronizationContext-маршалинга (проверено по исходникам тега: `EventManager` зовёт `Invoke`
+  напрямую). Любое изменение VM/свойства из `OnTimeChanged/OnLengthChanged/OnPlaying/...` без
+  `Application.Current.Dispatcher.BeginInvoke` → кросс-тред `InvalidOperationException` (убивает процесс
+  через AppDomain handler). Все обработчики плеера обёрнуты в `OnUi(action)`.
+- **Закрытие приложения не должно блокироваться на движке:** `manager.StopAsync(2s)` + `Wait(1s)`
+  в `MainViewModel.Dispose` + `engine.Dispose()` на фоне с таймаутом 2 с. Без ограничений закрытие
+  занимало ~5 с (остановка менеджера ждёт сеть/пиров).
+- **Символы WPF-UI проверяй по перечислению:** `MovieCamera24` НЕ существует в 4.3.0 (XamlParseException
+  при создании экрана). Проверка: `grep '^  Имя = '` в исходнике `SymbolRegular.cs` тега 4.3.0.

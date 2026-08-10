@@ -85,9 +85,21 @@ public sealed class AppSettings
     /// <summary>Регистрировать ассоциации и контекстное меню при запуске.</summary>
     public bool IntegrateShell { get; set; } = true;
 
+    // --- Магнет-стриминг ---
+    /// <summary>Папка кэша торрент-сессий; null — по умолчанию %LOCALAPPDATA%\Prosmotr\torrents.</summary>
+    public string? TorrentCacheDirectory { get; set; }
+    /// <summary>Удалять скачанные данные торрента при выходе из приложения.</summary>
+    public bool DeleteTorrentCacheOnExit { get; set; } = false;
+    /// <summary>Регистрировать magnet: протокол, чтобы ссылки в браузере открывались «Просмотром».
+    /// По умолчанию выключено — не перехватываем ссылки у других клиентов без явного согласия.</summary>
+    public bool RegisterMagnetProtocol { get; set; } = false;
+
     // --- Последнее состояние ---
     public string? LastFilePath { get; set; }
 
     // --- Недавнее ---
     public List<RecentEntry> RecentFiles { get; set; } = new();
+
+    // --- Недавние магнет-ссылки (стартовый экран) ---
+    public List<RecentMagnetEntry> RecentMagnets { get; set; } = new();
 }

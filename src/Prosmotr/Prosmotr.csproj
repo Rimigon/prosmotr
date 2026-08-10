@@ -43,6 +43,9 @@
     <!-- Изображения: WEBP/HEIC через Magick.NET, анимированный GIF через XamlAnimatedGif -->
     <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.13.1" />
     <PackageReference Include="XamlAnimatedGif" Version="2.3.1" />
+
+    <!-- Магнет-стриминг: чистый .NET BitTorrent-движок (streaming mode) -->
+    <PackageReference Include="MonoTorrent" Version="3.0.2" />
   </ItemGroup>
 
   <ItemGroup>

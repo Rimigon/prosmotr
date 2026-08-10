@@ -34,6 +34,12 @@
                 </ui:Button>
             </StackPanel>
 
+            <ui:Button Content="Смотреть по магнет-ссылке…"
+                       Command="{Binding OpenMagnetCommand}"
+                       HorizontalAlignment="Center" Margin="0,12,0,0" MinWidth="220">
+                <ui:Button.Icon><ui:SymbolIcon Symbol="Link24" /></ui:Button.Icon>
+            </ui:Button>
+
             <StackPanel Margin="0,32,0,0"
                         Visibility="{Binding HasRecent, Converter={StaticResource BoolToVis}}">
                 <TextBlock Text="Недавние" FontWeight="SemiBold" Opacity="0.8"
@@ -61,6 +67,32 @@
                            HorizontalAlignment="Center" Margin="0,14,0,0" MinWidth="180">
                     <ui:Button.Icon><ui:SymbolIcon Symbol="Delete24" /></ui:Button.Icon>
                 </ui:Button>
+            </StackPanel>
+
+            <!-- Недавние магнет-ссылки (рядом с недавними файлами/папками) -->
+            <StackPanel Margin="0,28,0,0"
+                        Visibility="{Binding HasRecentMagnets, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="Недавние магнет-ссылки" FontWeight="SemiBold" Opacity="0.8"
+                           Margin="4,0,0,6" />
+                <ItemsControl ItemsSource="{Binding RecentMagnets}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <ui:Button Appearance="Transparent" Foreground="{DynamicResource AppCanvasForeground}"
+                                       HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                       Margin="0,1"
+                                       Command="{Binding DataContext.OpenRecentMagnetCommand,
+                                                 RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                       CommandParameter="{Binding}">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon Symbol="Link24" Margin="0,0,10,0" Opacity="0.7" />
+                                    <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" MaxWidth="460" />
+                                </StackPanel>
+                            </ui:Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <ui:Button Content="Очистить" Command="{Binding ClearRecentMagnetsCommand}"
+                           HorizontalAlignment="Center" Margin="0,10,0,0" MinWidth="120" />
             </StackPanel>
         </StackPanel>
         </Grid>

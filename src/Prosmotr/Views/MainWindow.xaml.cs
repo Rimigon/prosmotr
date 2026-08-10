@@ -44,6 +44,8 @@ public partial class MainWindow : FluentWindow
 
         _vm.SettingsRequested += OpenSettings;
         _vm.PropertiesRequested += OpenProperties;
+        _vm.MagnetInputRequested += OpenMagnetInput;
+        _vm.TorrentCacheRequested += OpenTorrentCacheWindow;
         _vm.PropertyChanged += OnViewModelPropertyChanged;
 
         _chromeHideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
@@ -201,6 +203,47 @@ public partial class MainWindow : FluentWindow
 
     // --- Настройки ---
 
+    /// <summary>Диалог кэша магнет-стриминга (кнопка в верхней панели): путь, размер, очистка.</summary>
+    private void OpenTorrentCacheWindow()
+    {
+        if (_suspendHotkeys) return;
+        try
+        {
+            var window = _services.GetRequiredService<TorrentCacheWindow>();
+            window.Owner = this;
+            window.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("OpenTorrentCacheWindow", ex);
+        }
+    }
+
+    /// <summary>Диалог вставки магнет-ссылки (кнопка стартового экрана / подхват из буфера).</summary>
+    private async void OpenMagnetInput()
+    {
+        if (_suspendHotkeys) return;
+        try
+        {
+            var window = _services.GetRequiredService<MagnetInputWindow>();
+            window.Owner = this;
+            // Предзаполняем из буфера обмена (подхват при старте / быстрая вставка).
+            try
+            {
+                if (Clipboard.ContainsText())
+                    window.Prefill(Clipboard.GetText().Trim());
+            }
+            catch { /* буфер недоступен (RDP) — пустое поле */ }
+
+            if (window.ShowDialog() == true && window.Magnet != null)
+                await _vm.OpenMagnetAsync(window.Magnet);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("OpenMagnetInput", ex);
+        }
+    }
+
     private void OpenSettings()
     {
         var window = _services.GetRequiredService<SettingsWindow>();
@@ -275,6 +318,11 @@ public partial class MainWindow : FluentWindow
             {
                 WeakReferenceMessenger.Default.Send(new ToggleChromeMessage());
             }
+            else if (_vm.CurrentContent is TorrentStreamViewModel)
+            {
+                // PageDown (ToggleChromeKey) для магнет-стриминга — как у обычного видео.
+                WeakReferenceMessenger.Default.Send(new ToggleChromeMessage());
+            }
             return true;
         }
 
@@ -346,6 +394,41 @@ public partial class MainWindow : FluentWindow
             case Key.Escape:
                 if (_vm.IsFullScreen) { _vm.ExitFullScreenCommand.Execute(null); return true; }
                 return false;
+        }
+
+        // Магнет-стриминг: базовое управление как у видео (работает и над airspace-окном VLC,
+        // т.к. TryHandleHotkey вызывается из ThreadPreprocessMessage).
+        if (_vm.CurrentContent is TorrentStreamViewModel torrent)
+        {
+            switch (key)
+            {
+                case Key.Space or Key.Enter:
+                    torrent.TogglePlayPauseCommand.Execute(null);
+                    return true;
+                case Key.M:
+                    torrent.ToggleMuteCommand.Execute(null);
+                    return true;
+                case Key.Up:
+                    torrent.VolumeUpCommand.Execute(null);
+                    return true;
+                case Key.Down:
+                    torrent.VolumeDownCommand.Execute(null);
+                    return true;
+                case Key.Left:
+                    torrent.SeekToCommand.Execute(Math.Max(0, torrent.PositionMs - 10_000));
+                    return true;
+                case Key.Right:
+                    torrent.SeekToCommand.Execute(Math.Min(torrent.LengthMs, torrent.PositionMs + 10_000));
+                    return true;
+                case Key.Escape:
+                    // Полный экран уже обработан выше (case Key.Escape). Здесь — закрытие сессии.
+                    torrent.CloseSessionCommand.Execute(null);
+                    return true;
+                case Key.F:
+                    _vm.ToggleFullScreenCommand.Execute(null);
+                    return true;
+            }
+            return false;
         }
 
         if (_vm.CurrentContent is not VideoViewerViewModel video) return false;

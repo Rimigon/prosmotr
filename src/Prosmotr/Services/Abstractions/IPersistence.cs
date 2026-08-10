@@ -32,6 +32,8 @@ public interface IPlaybackPositionStore
     PlaybackPosition? Get(string path);
     void Save(string path, long positionMs, long durationMs, float? rate, int? audioTrackId, string? audioTrackName);
     void Remove(string path);
+    /// <summary>Удалить все записи, чей путь удовлетворяет предикату (напр. чистка кэша магнет-стриминга).</summary>
+    void RemoveAll(Func<string, bool> predicate);
     void Flush();
 }
 
