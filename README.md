@@ -4,6 +4,8 @@
 фото и видео, удобная навигация по папке, быстрое удаление в Корзину, полноценный видеоплеер
 с **глобальной скоростью воспроизведения** по умолчанию для всех видео.
 
+![Скриншот](docs/screenshots/main.png)
+
 ## Стек
 
 - **WPF**, .NET 8 (`net8.0-windows`), архитектура **MVVM**
@@ -28,6 +30,7 @@ dotnet run   --project src\Prosmotr\Prosmotr.csproj
 > попадёт в приложение, запускаемое ярлыком на рабочем столе (ярлык ведёт на `app\Prosmotr.exe`,
 > а `dotnet build`/`run` собирают в `bin\…`, которую ярлык не видит). Перед публикацией закрой
 > запущенные экземпляры (иначе файлы заблокированы):
+>
 > ```powershell
 > Get-Process Prosmotr -ErrorAction SilentlyContinue | Stop-Process -Force
 > dotnet publish src\Prosmotr\Prosmotr.csproj -c Release -o app
