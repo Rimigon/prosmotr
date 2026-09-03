@@ -87,11 +87,6 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     private double _seekAnchorMs = -1;   // позиция до seek'а (откуда не должен прыгать назад)
     private double _seekTargetMs = -1;   // цель seek'а
     private DateTime _seekGuardUntil = DateTime.MinValue;
-    // Дросселирование клавиатурных шагов: при удержании стрелки система шлёт повторы
-    // очень часто, а LibVLC не успевает обрабатывать seek'и на высокой скорости.
-    // Накапливаем направления и выполняем один seek по таймеру.
-    private readonly DispatcherTimer _stepThrottle;
-    private int _pendingStepCount;
 
     // Picture-in-Picture: окно, в которое временно перемещается плеер.
     private Views.PictureInPictureWindow? _pipWindow;
@@ -196,8 +191,9 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         _seekCooldown = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
         _seekCooldown.Tick += (_, _) => { _seekCooldown.Stop(); _seekCooldownActive = false; };
 
-        _stepThrottle = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
-        _stepThrottle.Tick += (_, _) => ExecutePendingSteps();
+        // Накопление шагов при удержании стрелки (см. Step).
+        _stepAccumTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
+        _stepAccumTimer.Tick += (_, _) => OnStepAccumTick(null, EventArgs.Empty);
     }
 
     /// <summary>Запускается из View после загрузки VideoView (когда готов нативный HWND).</summary>
@@ -381,48 +377,76 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
     // Длительность одного кадра; если FPS ещё неизвестен — берём ~25 кадров/с (40 мс).
     private double FrameMs { get { var fps = _playback.Fps; return fps > 0 ? 1000.0 / fps : 40.0; } }
 
-    [RelayCommand]
-    private void StepForward()
-    {
-        _pendingStepCount++;
-        if (!_stepThrottle.IsEnabled) _stepThrottle.Start();
-    }
+    // --- Перемотка стрелками ←/→ ---
+    // Одиночное нажатие = один SeekTo на +StepMs (как клик по таймлайну). При удержании
+    // (автоповтор ~30/сек) накапливаем смещение (_pendingStepMs), а реальный seek шлём
+    // по таймеру (~80 мс) на последнюю накопленную позицию — перемотка быстрая и плавная.
+    private readonly DispatcherTimer _stepAccumTimer;
+    private double _pendingStepMs;
+    private int _pendingDir;
+    private DateTime _lastStepAt = DateTime.MinValue;
 
     [RelayCommand]
-    private void StepBackward()
-    {
-        _pendingStepCount--;
-        if (!_stepThrottle.IsEnabled) _stepThrottle.Start();
-    }
+    private void StepForward() => Step(1);
 
-    private void ExecutePendingSteps()
+    [RelayCommand]
+    private void StepBackward() => Step(-1);
+
+    private void Step(int direction)
     {
-        _stepThrottle.Stop();
-        var steps = _pendingStepCount;
-        _pendingStepCount = 0;
-        if (steps == 0) return;
+        if (_disposed) return;
+        if (IsEnded && direction > 0) return; // вперёд у конца — no-op; назад разрешён
 
         if (_settings.Settings.FrameByFrameSeek)
         {
-            // Покадрово: не накапливаем слишком много кадров подряд — максимум ±5.
-            var count = Math.Clamp(steps, -5, 5);
-            if (count > 0)
-            {
-                for (var i = 0; i < count; i++)
-                    _playback.NextFrame();
-            }
+            // Покадрово: как раньше — шаг на один кадр (NextFrame сам ставит на паузу).
+            if (direction > 0) _playback.NextFrame();
             else
             {
                 _playback.Pause();
-                for (var i = 0; i < -count; i++)
-                    SeekTo(Math.Max(PositionMs - FrameMs, 0), isDrag: false);
+                SeekTo(Math.Max(PositionMs - FrameMs, 0), isDrag: false);
             }
+            return;
         }
-        else
+
+        var now = DateTime.UtcNow;
+        var sinceLast = (now - _lastStepAt).TotalMilliseconds;
+
+        // Смена направления — сбрасываем накопленное.
+        if (_pendingDir != 0 && _pendingDir != direction)
         {
-            var target = Math.Clamp(PositionMs + steps * StepMs, 0, LengthMs);
-            SeekTo(target, isDrag: false);
+            _pendingStepMs = 0;
+            _pendingDir = 0;
+            _stepAccumTimer.Stop();
         }
+
+        if (_pendingDir == 0 && sinceLast > 400)
+        {
+            // Одиночное нажатие (или начало удержания после паузы) — сразу один шаг.
+            _lastStepAt = now;
+            var target = Math.Clamp(PositionMs + direction * StepMs, 0, LengthMs);
+            SeekTo(target, isDrag: false);
+            return;
+        }
+
+        // Удержание: накапливаем смещение, таймер выполнит seek на последнюю позицию.
+        _pendingDir = direction;
+        _pendingStepMs += direction * StepMs;
+        _lastStepAt = now;
+        if (!_stepAccumTimer.IsEnabled) _stepAccumTimer.Start();
+    }
+
+    private void OnStepAccumTick(object? sender, EventArgs e)
+    {
+        _stepAccumTimer.Stop();
+        if (_disposed) return;
+        var dir = _pendingDir;
+        var delta = _pendingStepMs;
+        _pendingStepMs = 0;
+        _pendingDir = 0;
+        if (dir == 0 || delta == 0) return;
+        var target = Math.Clamp(PositionMs + delta, 0, LengthMs);
+        SeekTo(target, isDrag: false);
     }
 
     [RelayCommand]
@@ -987,7 +1011,7 @@ public sealed partial class VideoViewerViewModel : ViewModelBase, IDisposable
         _settings.SettingsChanged -= OnSettingsChanged;
 
         _seekCooldown.Stop();
-        _stepThrottle.Stop();
+        _stepAccumTimer.Stop();
         _preview?.Dispose();
         _preview = null;
         _previewCts?.Cancel();

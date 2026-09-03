@@ -31,8 +31,9 @@ public sealed class LibVlcProvider : IDisposable
         "--quiet",
         "--no-plugins-scan",
         "--file-caching=1000",
-        "--network-caching=1000",
-        "--input-fast-seek" // уменьшает артефакты при перемотке: seek к ближайшему keyframe
+        "--network-caching=1000"
+        // НЕ добавляем --input-fast-seek: Screenbox и другие LibVLC-плееры без него работают
+        // корректно на 4K. С ним seek становится неточным и замедляется на длинном GOP.
     };
 
     public LibVLC LibVlc

@@ -1,3 +1,4 @@
+using System.IO;
 using LibVLCSharp.Shared;
 using LibVLCSharp.Shared.Structures;
 
@@ -21,7 +22,10 @@ public sealed class VideoPlaybackService : IDisposable
         {
             EnableKeyInput = false,   // ввод обрабатываем сами через WPF-оверлей
             EnableMouseInput = false,
-            EnableHardwareDecoding = false // отключаем аппаратное декодирование: на ряде GPU/драйверов даёт зелёный экран
+            // Софтверный декодер. Аппаратный (DXVA2/D3D11VA) на open-GOP H.264 (SEI recovery,
+            // без IDR) показывает артефакты при seek; софтверный ffmpeg обрабатывает корректно
+            // (проверено: ffmpeg CLI делает чистый seek на таком файле). 4K 25fps CPU тянет.
+            EnableHardwareDecoding = false
         };
     }
 
@@ -34,6 +38,19 @@ public sealed class VideoPlaybackService : IDisposable
         // со спецсимволами (#, %), на которых new Uri(path) бросает UriFormatException.
         var media = new Media(_provider.LibVlc, path, FromType.FromPath);
         _media = media;
+
+        // Для MP4/MOV/M4V форсируем ffmpeg-демуксер (avformat) вместо встроенного mp4-демуксера
+        // VLC. Встроенный доверяет stss-боксу, а в некоторых рипах (open-GOP, SiteRIP) stss
+        // помечает non-IDR recovery-кадры как ключевые → после seek картинка «сыпется», пока
+        // декодер не дойдёт до настоящего IDR. ffmpeg-демуксер ищет реальные IDR. Для mkv/avi/
+        // webm оставляем встроенные демуксеры (они там надёжнее: главы, субтитры).
+        var ext = Path.GetExtension(path);
+        if (ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".m4v", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".mov", StringComparison.OrdinalIgnoreCase))
+        {
+            media.AddOption(":demux=avformat");
+        }
 
         if (startMs > 1000)
             _media.AddOption($":start-time={startMs / 1000.0:0.###}");
