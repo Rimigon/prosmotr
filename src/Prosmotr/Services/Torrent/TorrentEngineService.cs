@@ -3,6 +3,7 @@ using System.Net;
 using System.Windows.Threading;
 using MonoTorrent;
 using MonoTorrent.Client;
+using MonoTorrent.Dht;
 using Prosmotr.Infrastructure;
 using Prosmotr.Models;
 using Prosmotr.Services.Abstractions;
@@ -26,6 +27,8 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
     private static readonly TimeSpan MetadataTimeout = TimeSpan.FromSeconds(60);
     /// <summary>Prebuffer (первые+последние куски) тоже может ждать пиров — не вешаемся навсегда.</summary>
     private static readonly TimeSpan PrebufferTimeout = TimeSpan.FromSeconds(90);
+    /// <summary>Резолв bootstrap-хостов DHT — только при первом магнете за запуск, коротко.</summary>
+    private static readonly TimeSpan DhtBootstrapTimeout = TimeSpan.FromSeconds(2);
 
     private readonly ISettingsService _settings;
     private readonly object _gate = new();
@@ -33,6 +36,7 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
     private TorrentManager? _manager;
     private DispatcherTimer? _progressTimer;
     private CancellationTokenSource? _initCts;
+    private IReadOnlyList<ReadOnlyMemory<byte>>? _dhtSeed;
 
     public TorrentEngineService(ISettingsService settings)
     {
@@ -54,6 +58,12 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
             AppLog.Write("[Torrent] AddMagnetAsync: MagnetLink.TryParse FAILED");
             throw new FormatException("Неверная магнет-ссылка.");
         }
+
+        // Bootstrap-узлы DHT — ДО создания движка (см. DhtBootstrap): иначе MonoTorrent пойдёт
+        // резолвить единственный router.bittorrent.com, получит блокировку DNS от провайдера
+        // и останется без DHT вообще — без DHT magnet находит единицы пиров или ни одного.
+        if (_dhtSeed is not { Count: > 0 })
+            _dhtSeed = await DhtBootstrap.ResolveAsync(DhtBootstrapTimeout);
 
         var engine = GetEngine();
         AppLog.Write("[Torrent] Engine ready");
@@ -109,16 +119,42 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
             if (_engine != null) return _engine;
 
             var cacheRoot = _settings.Settings.TorrentCacheDirectory ?? TorrentCachePaths.DefaultCacheDirectory;
+            // DhtEngine создаём сами и сразу кормим bootstrap-узлами (см. DhtBootstrap) —
+            // движок получит их через Factories в состоянии NotReady, т.е. напрямую в PendingNodes,
+            // и встроенный (блокируемый) резолв router.bittorrent.com уже не будет задействован.
+            var dht = new DhtEngine();
+            if (_dhtSeed is { Count: > 0 })
+                dht.Add(_dhtSeed);
+
         _engine = new ClientEngine(new EngineSettingsBuilder
         {
             CacheDirectory = Path.Combine(cacheRoot, ".cache"),
             ListenEndPoints = new Dictionary<string, IPEndPoint>
             {
-                ["tcp"] = new(IPAddress.Any, 0) // эфемерный порт; свой порт — вне скоупа v1
+                // Порт 0 = свободный (как в дефолте MonoTorrent).
+                ["ipv4"] = new(IPAddress.Any, 0),
+                // IPv6-листенер: где провайдер раздаёт IPv6 — сюда приходят пиры,
+                // которых через IPv4 не видно.
+                ["ipv6"] = new(IPAddress.IPv6Any, 0)
             },
-            AllowPortForwarding = false, // без UPnP в v1: исходящие + DHT достаточно для старта
-            AutoSaveLoadFastResume = true
-        }.ToSettings());
+            // UPnP/NAT-PMP включён: без входящих подключений клиент полупассивный — видит
+            // меньше пиров. Ошибки маппинга в MonoNatPortForwarder проглатываются, так что
+            // на роутере без UPnP просто ничего не произойдёт.
+            AllowPortForwarding = true,
+            AutoSaveLoadFastResume = true,
+            // КРИТИЧНО: НЕ подхватывать сохранённые метаданные магнета. Если файл
+            // `metadata\<hash>.torrent` есть, MonoTorrent создаёт менеджер уже с торрентом
+            // (ClientEngine.AddAsync: `if (Settings.AutoSaveLoadMagnetLinkMetadata && Torrent.TryLoad(...))
+            // manager.SetMetadata(torrent)`), и в этом пути DHT так и не инициализируется:
+            // застывает в Initialising с 0 узлов навсегда, пиры ищутся только трекерами,
+            // загрузка стоит. Воспроизведено: с файлом — 0 узлов и 0 пиров, без файла —
+            // 58 узлов за 2 с и сотни пиров. Поэтому метаданные каждый раз берём от пиров
+            // (это секунды), зато DHT живая. См. AGENTS 5.36.
+            AutoSaveLoadMagnetLinkMetadata = false,
+            // Дефолт 8 — при десятках найденных пиров очередь рукопожатий становится узким
+            // местом; поднимаем, чтобы состав пиров набирался быстрее.
+            MaximumHalfOpenConnections = 30
+        }.ToSettings(), Factories.Default.WithDhtCreator(() => dht));
             return _engine;
         }
     }
@@ -130,6 +166,20 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
             // Метаданные магнет-ссылки приходят от пиров; без пиров — таймаут.
             AppLog.Write("[Torrent] Waiting for metadata...");
             var metadata = manager.WaitForMetadataAsync(ct);
+            // Диагностика фазы поиска пиров: прогресс-таймер стартует только после метаданных,
+            // поэтому без этих строк причина затыка (DHT не поднялась / нет пиров) не видна
+            // в логе. Пишем только когда ждать уже долго — обычно метаданные приходят за секунды.
+            var watchdog = Task.Run(async () =>
+            {
+                for (int i = 0; i < 12 && !metadata.IsCompleted; i++)
+                {
+                    try { await Task.Delay(TimeSpan.FromSeconds(5), ct); } catch { return; }
+                    var dht = manager.Engine?.Dht;
+                    AppLog.Write($"[Torrent] metadata wait {5 * (i + 1)}s: dht={dht?.State} " +
+                        $"nodes={dht?.NodeCount} peers={manager.Peers.Available}/{manager.Peers.Leechs}/{manager.Peers.Seeds} " +
+                        $"open={manager.OpenConnections}");
+                }
+            });
             if (await Task.WhenAny(metadata, Task.Delay(MetadataTimeout, ct)) != metadata)
                 throw new TimeoutException("Не удалось получить метаданные (нет пиров).");
             await metadata;
@@ -171,6 +221,9 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
             session.Stream = stream;
             session.IsReadyToPlay = true;
             session.Status = TorrentStatus.ReadyToPlay;
+            // Диагностика скорости: без узлов DHT пиры ищутся только трекерами.
+            AppLog.Write($"[Torrent] Ready: DHT nodes={manager.Engine?.Dht.NodeCount ?? 0}, " +
+                $"known peers={manager.Peers.Available + manager.Peers.Leechs + manager.Peers.Seeds}");
         }
         catch (OperationCanceledException)
         {
@@ -199,6 +252,7 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
         _progressTimer?.Stop();
         _progressTicks = 0;
         _wasComplete = false;
+        _sessionStartedAt = DateTime.Now;
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _progressTimer.Tick += (_, _) =>
         {
@@ -208,6 +262,11 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
                 session.DownloadSpeed = manager.Monitor.DownloadRate;
                 session.UploadSpeed = manager.Monitor.UploadRate;
                 session.PeersCount = manager.OpenConnections;
+                session.SeedsCount = manager.Peers.Seeds;
+                session.ElapsedSeconds = (long)(DateTime.Now - _sessionStartedAt).TotalSeconds;
+                // Диагностика поиска пиров: 0 означает, что DHT не завелась (bootstrap-узлы
+                // недоступны / их не приняли) — тогда остаются только трекеры.
+                session.DhtNodes = manager.Engine?.Dht.NodeCount ?? 0;
                 var remaining = session.TotalBytes > 0
                     ? (long)(session.TotalBytes * (1 - session.DownloadedPercent / 100.0))
                     : 0L;
@@ -268,6 +327,7 @@ public sealed class TorrentEngineService : ITorrentEngineService, IDisposable
 
     private int _progressTicks;
     private bool _wasComplete;
+    private DateTime _sessionStartedAt = DateTime.Now;
 
     public async Task CloseSessionAsync()
     {

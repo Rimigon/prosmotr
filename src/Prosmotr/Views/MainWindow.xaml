@@ -57,6 +57,10 @@
 
                 <!-- Слева: открытие + сортировка -->
                 <StackPanel Orientation="Horizontal">
+                    <ui:Button Appearance="Transparent" ToolTip="На главную (стартовый экран)"
+                               Command="{Binding GoHomeCommand}">
+                        <ui:Button.Icon><ui:SymbolIcon Symbol="Home24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
+                    </ui:Button>
                     <ui:Button Appearance="Transparent" ToolTip="Открыть файл" Command="{Binding OpenFileCommand}">
                         <ui:Button.Icon><ui:SymbolIcon Symbol="Document24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
                     </ui:Button>
@@ -139,6 +143,9 @@
                     </ui:Button>
                     <ui:Button Appearance="Transparent" ToolTip="Настройки" Command="{Binding OpenSettingsCommand}">
                         <ui:Button.Icon><ui:SymbolIcon Symbol="Settings24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
+                    </ui:Button>
+                    <ui:Button Appearance="Transparent" ToolTip="Магнет-стриминг" Command="{Binding OpenMagnetCommand}">
+                        <ui:Button.Icon><ui:SymbolIcon Symbol="Link24" Foreground="{DynamicResource AppCanvasForeground}" /></ui:Button.Icon>
                     </ui:Button>
                     <ui:Button Appearance="Transparent" ToolTip="Кэш магнет-стриминга"
                                Command="{Binding OpenTorrentCacheCommand}">

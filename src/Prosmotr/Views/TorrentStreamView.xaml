@@ -37,20 +37,46 @@
                         </Style>
                     </ProgressBar.Style>
                 </ProgressBar>
-                <TextBlock TextAlignment="Center" Opacity="0.85" FontSize="13">
-                    <Run Text="{Binding DownloadedPercent, Mode=OneWay, StringFormat={}{0:0}%}" />
-                    <Run Text=" · " />
-                    <Run Text="{Binding SpeedText, Mode=OneWay}" />
-                    <Run Text=" ↓" />
-                    <Run Text=" · " />
-                    <Run Text="{Binding UploadText, Mode=OneWay}" />
-                    <Run Text=" ↑" />
-                    <Run Text=" · " />
-                    <Run Text="{Binding PeersText, Mode=OneWay}" />
-                    <Run Text=" пиров" />
-                </TextBlock>
-                <TextBlock Text="{Binding EtaText}" TextAlignment="Center" Opacity="0.6" FontSize="12"
-                           Margin="0,4,0,0" />
+                <Grid HorizontalAlignment="Center" Margin="0,16,0,0" TextElement.FontSize="13">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Скачано" Opacity="0.6" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SizeText, Mode=OneWay}" Margin="16,0,0,0" />
+
+                    <TextBlock Grid.Row="1" Text="Скорость" Opacity="0.6" Margin="0,4,0,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Margin="16,4,0,0">
+                        <Run Text="{Binding SpeedText, Mode=OneWay}" /><Run Text=" ↓" />
+                        <Run Text="{Binding UploadText, Mode=OneWay}" /><Run Text=" ↑" />
+                    </TextBlock>
+
+                    <TextBlock Grid.Row="2" Text="Пиры" Opacity="0.6" Margin="0,4,0,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PeersText, Mode=OneWay}" Margin="16,4,0,0" />
+
+                    <TextBlock Grid.Row="3" Text="Сиды" Opacity="0.6" Margin="0,4,0,0" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SeedsText, Mode=OneWay}" Margin="16,4,0,0" />
+
+                    <TextBlock Grid.Row="4" Text="Прошло" Opacity="0.6" Margin="0,4,0,0" />
+                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding ElapsedText, Mode=OneWay}" Margin="16,4,0,0" />
+
+                    <TextBlock Grid.Row="5" Text="Осталось" Opacity="0.6" Margin="0,4,0,0" />
+                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding EtaText, Mode=OneWay}" Margin="16,4,0,0" />
+
+                    <!-- DHT: 0 узлов = пиры ищутся только через трекеры (типичная причина медленной загрузки) -->
+                    <TextBlock Grid.Row="6" Text="DHT" Opacity="0.6" Margin="0,4,0,0" />
+                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding DhtText, Mode=OneWay}" Margin="16,4,0,0" />
+                </Grid>
 
                 <TextBlock Text="{Binding ErrorMessage}" Foreground="#FF8F8F" TextAlignment="Center"
                            TextWrapping="Wrap" Margin="0,12,0,0"
@@ -85,10 +111,16 @@
                 <!-- Плашка скачивания в углу: скрывается вместе с панелью (вариант А).
                      IsHitTestVisible=False — клики проходят на ClickArea (пауза). -->
                 <Border x:Name="DownloadBadge" Grid.Row="0" VerticalAlignment="Top" HorizontalAlignment="Right"
-                        Margin="0,14,14,0" Background="#B3000000" CornerRadius="6" Padding="10,5"
+                        Margin="0,14,14,0" Background="#B3000000" CornerRadius="6" Padding="10,6"
                         Visibility="Collapsed" IsHitTestVisible="False">
-                    <TextBlock Text="{Binding DownloadSummaryText, Mode=OneWay}" Foreground="White"
-                               FontSize="12" Opacity="0.9" />
+                    <StackPanel>
+                        <TextBlock Text="{Binding SizeText, Mode=OneWay}" Foreground="White"
+                                   FontSize="12" Opacity="0.9" />
+                        <TextBlock Text="{Binding DownloadDetailText, Mode=OneWay}" Foreground="White"
+                                   FontSize="11" Opacity="0.75" Margin="0,2,0,0" />
+                        <TextBlock Text="{Binding EtaText, Mode=OneWay}" Foreground="White"
+                                   FontSize="11" Opacity="0.6" Margin="0,2,0,0" />
+                    </StackPanel>
                 </Border>
 
                 <!-- Индикатор смены скорости (как в основном плеере) -->

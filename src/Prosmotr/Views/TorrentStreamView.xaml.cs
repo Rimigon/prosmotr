@@ -98,6 +98,7 @@ public sealed partial class TorrentStreamView : UserControl
         if (_vm != null) _vm.PropertyChanged += OnVmPropertyChanged;
         UpdateCover();
         UpdateBufferingPanel();
+        ApplyChromeVisibility();
     }
 
     private void DetachVm()
@@ -262,6 +263,7 @@ public sealed partial class TorrentStreamView : UserControl
                 break;
             case nameof(TorrentStreamViewModel.DownloadedPercent):
                 UpdateDownloadedFill();
+                ApplyChromeVisibility();
                 break;
             case nameof(TorrentStreamViewModel.IsPlaying):
                 // На паузе панель всегда видна (как в основном плеере).

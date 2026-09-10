@@ -28,6 +28,19 @@ public sealed partial class TorrentSession : ObservableObject
     [ObservableProperty]
     private int _peersCount;
 
+    /// <summary>Подключённые сиды (PeerManager.Seeds) — показываем на странице загрузки.</summary>
+    [ObservableProperty]
+    private int _seedsCount;
+
+    /// <summary>Секунд с начала загрузки (для строки «Прошло»).</summary>
+    [ObservableProperty]
+    private long _elapsedSeconds;
+
+    /// <summary>Узлов в роутинг-таблице DHT. 0 = DHT не завелась (bootstrap-узлы недоступны),
+    /// т.е. пиры ищутся только через трекеры — типичная причина «качает еле-еле».</summary>
+    [ObservableProperty]
+    private int _dhtNodes;
+
     [ObservableProperty]
     private long? _etaSeconds;
 

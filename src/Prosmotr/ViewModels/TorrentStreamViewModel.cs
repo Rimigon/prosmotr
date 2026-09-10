@@ -40,6 +40,10 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
     private long _resumeMs;
     private int? _pendingAudioTrackId;
     private string? _pendingAudioTrackName;
+    /// <summary>Скорость/громкость/озвучка применены для текущей загрузки дорожки.
+    /// Повторно НЕ применяем: OnPlaying приходит и на каждое снятие паузы, а любой
+    /// SetRate/SetVolume/SetAudioTrack пересоздаёт аудиовыход → секунда тишины.</summary>
+    private bool _paramsApplied;
 
     [ObservableProperty] private bool _isBuffering;
     [ObservableProperty] private bool _isPlaying;
@@ -96,12 +100,29 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
     public string SpeedText => $"{TorrentStats.FormatBytes(_session.DownloadSpeed)}/с";
     public string UploadText => $"{TorrentStats.FormatBytes(_session.UploadSpeed)}/с";
     public string PeersText => $"{_session.PeersCount}";
-    /// <summary>Компактная строка для плашки «скачивание» в углу плеера.</summary>
-    public string DownloadSummaryText =>
-        $"{DownloadedPercent:0}% · {TorrentStats.FormatBytes(_session.DownloadSpeed)}/с ↓ · {_session.PeersCount} пиров";
+    public string SeedsText => $"{_session.SeedsCount}";
+
+    private long DownloadedBytes => (long)(_session.TotalBytes * (_session.DownloadedPercent / 100.0));
+
+    /// <summary>«42% · 1.9 ГБ из 4.5 ГБ» — сколько уже скачано от общего размера.</summary>
+    public string SizeText => _session.TotalBytes > 0
+        ? $"{DownloadedPercent:0}% · {TorrentStats.FormatBytes(DownloadedBytes)} из {TorrentStats.FormatBytes(_session.TotalBytes)}"
+        : $"{DownloadedPercent:0}%";
+
+    /// <summary>Вторая строка плашки «скачивание»: скорость, пиры, сиды.</summary>
+    public string DownloadDetailText =>
+        $"{TorrentStats.FormatBytes(_session.DownloadSpeed)}/с ↓ · {_session.PeersCount} пиров · {_session.SeedsCount} сидов";
+
     public string EtaText => _session.EtaSeconds is long eta
         ? $"Осталось ~{FormatEta(eta)}"
         : "Оценка недоступна";
+
+    public string ElapsedText => FormatDuration(_session.ElapsedSeconds);
+
+    /// <summary>Число узлов в роутинг-таблице DHT (`нет узлов` = DHT не поднялась).</summary>
+    public string DhtText => _session.DhtNodes > 0
+        ? ($"{_session.DhtNodes} " + NodeWord(_session.DhtNodes))
+        : "нет узлов";
 
     public string StatusText => _session.Status switch
     {
@@ -141,19 +162,29 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
                 break;
             case nameof(TorrentSession.DownloadedPercent):
                 OnPropertyChanged(nameof(DownloadedPercent));
-                OnPropertyChanged(nameof(DownloadSummaryText));
+                OnPropertyChanged(nameof(SizeText));
                 UpdateBuffering();
                 break;
             case nameof(TorrentSession.DownloadSpeed):
                 OnPropertyChanged(nameof(SpeedText));
-                OnPropertyChanged(nameof(DownloadSummaryText));
+                OnPropertyChanged(nameof(DownloadDetailText));
                 break;
             case nameof(TorrentSession.UploadSpeed):
                 OnPropertyChanged(nameof(UploadText));
                 break;
             case nameof(TorrentSession.PeersCount):
                 OnPropertyChanged(nameof(PeersText));
-                OnPropertyChanged(nameof(DownloadSummaryText));
+                OnPropertyChanged(nameof(DownloadDetailText));
+                break;
+            case nameof(TorrentSession.SeedsCount):
+                OnPropertyChanged(nameof(SeedsText));
+                OnPropertyChanged(nameof(DownloadDetailText));
+                break;
+            case nameof(TorrentSession.ElapsedSeconds):
+                OnPropertyChanged(nameof(ElapsedText));
+                break;
+            case nameof(TorrentSession.DhtNodes):
+                OnPropertyChanged(nameof(DhtText));
                 break;
             case nameof(TorrentSession.EtaSeconds):
                 OnPropertyChanged(nameof(EtaText));
@@ -217,6 +248,7 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
 
         Volume = _settings.Settings.LastVolume;
         IsMuted = _settings.Settings.LastMuted;
+        _paramsApplied = false;
 
         AppLog.Write("[Torrent] Player created");
         // Cover до первого кадра: нативный HWND мог ещё не отрисовать кадр — не показываем белый фон.
@@ -259,40 +291,45 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
             AppLog.Write($"[Torrent] VLC Playing event: Length={length}ms Time={time}ms State={state}");
             IsPlaying = true;
             _session.Status = TorrentStatus.Playing;
-            // Применяем сохранённые параметры ТОЛЬКО при реальном изменении (gotcha 5.34:
-            // безусловный SetRate/SetVolume при каждом resume перезапускал аудиовыход —
-            // на Bluetooth звук пропадал на секунду). Свежая загрузка сбрасывает их в дефолты —
-            // guard пропускает применение.
-            try
-            {
-                if (Math.Abs(_player!.Rate - _pendingRate) > 0.001f)
-                    _player.SetRate(_pendingRate);
-                if (_player.Volume != Math.Clamp(Volume, 0, VideoPlaybackService.MaxVolume))
-                    _player.Volume = Math.Clamp(Volume, 0, VideoPlaybackService.MaxVolume);
-                if (_player.Mute != IsMuted)
-                    _player.Mute = IsMuted;
-            }
-            catch (Exception ex)
-            {
-                AppLog.Error("Torrent OnPlaying apply params", ex);
-            }
 
-            // Синхронизируем UI с применённой скоростью: иначе кнопка/панель показывали бы «1×»,
+            // Синхронизируем UI со скоростью: иначе кнопка/панель показывали бы «1×»,
             // хотя воспроизведение идёт на запомненной скорости.
             Rate = _pendingRate;
             RateText = FormatRate(_pendingRate);
 
-            // Восстановление озвучки: список дорожек LibVLC отдаёт только после старта (gotcha 5.34).
-            if (_settings.Settings.RememberAudioTrackPerFile && _pendingAudioTrackId is int audioId)
+            // Параметры аудио/скорости применяем СТРОГО ОДИН РАЗ на загрузку дорожки.
+            // OnPlaying приходит и на каждое снятие паузы; любой SetRate/SetVolume/SetMute
+            // (и SetAudioTrack) пересоздаёт аудиовыход LibVLC → секунда тишины после паузы
+            // (см. AGENTS 5.34/5.36).
+            if (!_paramsApplied)
             {
-                var matched = MatchAudioTrack(audioId, _pendingAudioTrackName);
-                if (matched is int realId)
+                _paramsApplied = true;
+                try
                 {
-                    try { _player!.SetAudioTrack(realId); } catch { }
+                    if (Math.Abs(_player!.Rate - _pendingRate) > 0.001f)
+                        _player.SetRate(_pendingRate);
+                    if (_player.Volume != Math.Clamp(Volume, 0, VideoPlaybackService.MaxVolume))
+                        _player.Volume = Math.Clamp(Volume, 0, VideoPlaybackService.MaxVolume);
+                    if (_player.Mute != IsMuted)
+                        _player.Mute = IsMuted;
                 }
+                catch (Exception ex)
+                {
+                    AppLog.Error("Torrent OnPlaying apply params", ex);
+                }
+
+                // Восстановление озвучки: список дорожек LibVLC отдаёт только после старта (gotcha 5.34).
+                if (_settings.Settings.RememberAudioTrackPerFile && _pendingAudioTrackId is int audioId)
+                {
+                    var matched = MatchAudioTrack(audioId, _pendingAudioTrackName);
+                    if (matched is int realId)
+                    {
+                        try { _player!.SetAudioTrack(realId); } catch { }
+                    }
+                }
+                _pendingAudioTrackId = null;
+                _pendingAudioTrackName = null;
             }
-            _pendingAudioTrackId = null;
-            _pendingAudioTrackName = null;
 
             // Resume: НЕ сразу — откладываем на ~1.5 с (пусть отрисуется первый кадр)
             // и только если позиция в пределах уже скачанного. Иначе стриминг-поток
@@ -440,7 +477,10 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
     private void TogglePlayPause()
     {
         if (_player == null || _disposed) return;
-        if (_player.IsPlaying) _player.Pause();
+        if (_player.IsPlaying) { _player.SetPause(true); return; }
+        // Снятие паузы — через SetPause(false), а не Play(): Play() на паузе перезапускает
+        // аудиовыход LibVLC → секунда тишины. Play() оставляем для старта/после конца.
+        if (_player.State == VLCState.Paused) _player.SetPause(false);
         else _player.Play();
     }
 
@@ -647,6 +687,24 @@ public sealed partial class TorrentStreamViewModel : ViewModelBase, IDisposable
         if (seconds < 60) return $"{seconds} с";
         if (seconds < 3600) return $"{seconds / 60} мин";
         return $"{seconds / 3600} ч {seconds % 3600 / 60} мин";
+    }
+
+    /// <summary>мм:сс (или ч:мм:сс) — для строки «Прошло».</summary>
+    private static string FormatDuration(long seconds)
+    {
+        if (seconds < 0) seconds = 0;
+        return seconds < 3600
+            ? $"{seconds / 60:00}:{seconds % 60:00}"
+            : $"{seconds / 3600}:{seconds % 3600 / 60:00}:{seconds % 60:00}";
+    }
+
+    /// <summary>Узел/узла/узлов — иначе на экране «21 узлов».</summary>
+    private static string NodeWord(int count)
+    {
+        var mod100 = count % 100;
+        var mod10 = count % 10;
+        if (mod100 is >= 11 and <= 14) return "узлов";
+        return mod10 switch { 1 => "узел", 2 or 3 or 4 => "узла", _ => "узлов" };
     }
 
     [RelayCommand]

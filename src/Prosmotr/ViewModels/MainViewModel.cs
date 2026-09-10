@@ -75,13 +75,17 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public event Action<string>? FolderChanged;
 
     public bool ShowThumbnailStrip =>
-        _settings.Settings.ShowThumbnails && HasItems && !IsFullScreen;
+        _settings.Settings.ShowThumbnails && HasItems && !IsFullScreen
+        && CurrentContent is not TorrentStreamViewModel;
 
     /// <summary>Боковые стрелки главного окна: только для фото/пустого экрана.
     /// У видео свои стрелки в оверлее (поверх airspace VLC), поэтому окошные тут прятать —
-    /// иначе над видео получаются две стрелки на сторону, и «оконная» не ловит клики.</summary>
+    /// иначе над видео получаются две стрелки на сторону, и «оконная» не ловит клики.
+    /// На экране магнет-стриминга стрелки тоже не нужны: список галереи там не при чём,
+    /// а клик уводил бы с торрент-сессии на файл из прежней папки.</summary>
     public bool ShowWindowNavArrows =>
-        _nav.Items.Count > 1 && CurrentContent is not VideoViewerViewModel && ChromeVisible;
+        _nav.Items.Count > 1 && ChromeVisible
+        && CurrentContent is not (VideoViewerViewModel or TorrentStreamViewModel);
 
     /// <summary>Инфо-плашка в полноэкранном режиме (имя, размер, порядок файла).
     /// Показывается только когда есть что показывать и видны элементы управления (chrome).</summary>
@@ -264,12 +268,20 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         CurrentContent = next;
+        DisposeContentAfterSwap(old, next);
 
+        ThumbnailStrip.SetCurrent(cur);
+        UpdateStatus();
+        RefreshCommandStates();
+    }
+
+    /// <summary>Освободить старый контент после визуальной замены (без рывков). Запоминаем ссылку,
+    /// чтобы при закрытии до выполнения Background-операции освободить его синхронно в Dispose
+    /// (иначе LibVLC выгрузится раньше → осиротевшие MediaPlayer/Media → AV).</summary>
+    private void DisposeContentAfterSwap(object? old, object next)
+    {
         if (old is IDisposable disposable && !ReferenceEquals(old, next))
         {
-            // Освобождаем старый контент после визуальной замены (без рывков). Запоминаем ссылку,
-            // чтобы при закрытии до выполнения Background-операции освободить его синхронно в Dispose
-            // (иначе LibVLC выгрузится раньше → осиротевшие MediaPlayer/Media → AV).
             _pendingDisposal = disposable;
             Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
             {
@@ -280,8 +292,27 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
                 if (ReferenceEquals(_pendingDisposal, disposable)) _pendingDisposal = null;
             }), DispatcherPriority.Background);
         }
+    }
 
-        ThumbnailStrip.SetCurrent(cur);
+    /// <summary>«На главную»: вернуться на стартовый экран из любого режима. Список галереи
+    /// остаётся загруженным — навигация стрелками вернёт к просмотру.</summary>
+    [RelayCommand]
+    private async Task GoHome()
+    {
+        if (IsFullScreen) ExitFullScreen();
+        if (_activePipWindow != null) ClosePictureInPicture();
+        if (CurrentContent is TorrentStreamViewModel)
+        {
+            await CloseTorrentSessionAsync();
+            return;
+        }
+        if (CurrentContent is EmptyStateViewModel) return; // уже на стартовом экране
+
+        var old = CurrentContent;
+        var empty = CreateEmptyState();
+        empty.RefreshRecent();
+        CurrentContent = empty;
+        DisposeContentAfterSwap(old, empty);
         UpdateStatus();
         RefreshCommandStates();
     }
@@ -381,6 +412,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ToggleSlideshowCommand.NotifyCanExecuteChanged();
         ToggleCloneDisplayCommand.NotifyCanExecuteChanged();
         TogglePictureInPictureCommand.NotifyCanExecuteChanged();
+        OpenMagnetCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsFullScreenChanged(bool value)
@@ -393,7 +425,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     partial void OnCurrentContentChanged(object? value)
     {
         OnPropertyChanged(nameof(ShowWindowNavArrows));
+        // Лента миниатюр — только для галереи: на экране магнет-стриминга она не нужна
+        // (файлы в ленте — из прежней папки, к торренту отношения не имеют).
+        OnPropertyChanged(nameof(ShowThumbnailStrip));
         TogglePictureInPictureCommand.NotifyCanExecuteChanged();
+        OpenMagnetCommand.NotifyCanExecuteChanged();
     }
     partial void OnChromeVisibleChanged(bool value)
     {

@@ -21,8 +21,12 @@ public sealed partial class MainViewModel
     /// <summary>Просьба показать диалог кэша магнет-стриминга (обрабатывает MainWindow).</summary>
     public event Action? TorrentCacheRequested;
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanOpenMagnet))]
     private void OpenMagnet() => MagnetInputRequested?.Invoke();
+
+    /// <summary>Кнопка магнет-стриминга доступна с любого экрана, кроме самого торрент-плеера
+    /// (там сессия уже открыта — повторный ввод дал бы ошибку «уже есть активная сессия»).</summary>
+    private bool CanOpenMagnet() => CurrentContent is not TorrentStreamViewModel;
 
     [RelayCommand]
     private void OpenTorrentCache() => TorrentCacheRequested?.Invoke();
@@ -77,6 +81,7 @@ public sealed partial class MainViewModel
         if (CurrentContent is TorrentStreamViewModel vm)
         {
             vm.StopAndRelease(); // плеер освобождается ДО закрытия потока движком
+            RefreshCommandStates(); // вернуть доступность кнопки магнет-стриминга
             CurrentContent = CreateEmptyState();
         }
         await _torrents.CloseSessionAsync();
